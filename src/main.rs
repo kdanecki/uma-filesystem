@@ -2,6 +2,7 @@ mod types;
 use memmap2::*;
 //use memmap2::MmapMut;
 use std::{
+    ffi::CStr,
     fs::{File, OpenOptions},
     io::Write,
 };
@@ -24,8 +25,20 @@ fn main() {
     let mut f = types::FileSystem::new(&mut map[..]);
     //println!("{:?}", f);
     f.format(1024, 16384);
-    f.create_inode(1, 1);
-    f.create_file(c"BOO");
+    f.test();
+
+    f.create_file(c"foo", &['L' as u8, 'O' as u8, 'L' as u8]);
+    f.create_file(c"boo", &['M' as u8, 'O' as u8, 'L' as u8]);
+    // f.create_file(
+    //     c"goo",
+    //     &[1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    // );
+    println!(
+        "foo: {:?}",
+        CStr::from_bytes_until_nul(f.read_file(c"foo/").unwrap())
+    );
+    println!("foo: {:?}", f.read_file(c"foo//").unwrap());
+    println!("boo: {:?}", f.read_file(c"boo").unwrap());
 
     //f.save();
     //println!("{:?}", f);

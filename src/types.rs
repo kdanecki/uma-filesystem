@@ -81,6 +81,9 @@ impl<'a> FileSystem<'a> {
         //self.inode_bitmap.take(1);
         //self.blocks_bitmap.take(1);
         self.save();
+        self.create_inode(1, 1);
+        self.inode_bitmap.take(1);
+        self.blocks_bitmap.take(1);
     }
 
     pub fn save(&mut self) {
@@ -88,16 +91,21 @@ impl<'a> FileSystem<'a> {
         self.data[..28].copy_from_slice(&d);
     }
 
-    // fn take_inode(&mut self, id: inode_p) {
-    //     let bitmap = self.get_blocks_mut(self.inode_bitmap, self.inodes);
-    //     bitmap[id as usize / 8usize] |= (1 << id % 8);
-    // }
-
-    pub fn create_file(&mut self, path: &CStr) {
-        self.create_file_inter(&self.get_inode_by_id(1), path);
+    pub fn create_file(&mut self, path: &CStr, content: &[u8]) {
+        self.create_file_inter(&self.get_inode_by_id(1), path.to_bytes_with_nul(), content);
+    }
+    pub fn read_file(&self, path: &CStr) -> Option<&[u8]> {
+        if let Some(node) = self.search_directory(&self.get_inode_by_id(1), path) {
+            // println!(
+            //     "reading from node {:#?} block {}",
+            //     node, node.direct_blocks[0]
+            // );
+            return Some(self.get_data_block(node.direct_blocks[0]));
+        }
+        None
     }
 
-    fn create_file_inter(&mut self, node: &inode_t, name: &CStr) {
+    fn create_file_inter(&mut self, node: &inode_t, name: &[u8], content: &[u8]) {
         let mut i = 0usize;
         let inode_num = self.inode_bitmap.get_first_free();
         let block_num = self.blocks_bitmap.get_first_free();
@@ -108,16 +116,20 @@ impl<'a> FileSystem<'a> {
             i += dentry.size;
         }
         data[i..i + 4].copy_from_slice(&(inode_num as u32).to_le_bytes());
-        let name_len = name.count_bytes() + 1;
+        let name_len = name.len();
         data[i + 4..i + 8].copy_from_slice(&(name_len as u32).to_le_bytes());
-        data[8..8 + name_len].copy_from_slice(name.to_bytes_with_nul());
+        data[i + 8..i + 8 + name_len].copy_from_slice(name);
 
         //create inode
         self.create_inode(inode_num, block_num);
 
         //create data block
-        self.get_data_block_mut(block_num as u32)[0..3]
-            .copy_from_slice(&['L' as u8, 'O' as u8, 'L' as u8])
+        self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content)
+    }
+
+    pub fn test(&self) {
+        //println!("{:?}", self.get_inode_by_id(1));
+        //println!("{:?}", self.get_inode_by_id(2));
     }
 
     fn search_directory(&self, node: &inode_t, path: &CStr) -> Option<inode_t> {
@@ -129,9 +141,13 @@ impl<'a> FileSystem<'a> {
         } else {
             path.to_str().unwrap()
         };
+        //println!("searching filename {}", filename);
         while let Some(dentry) = Dentry::from(&data[i..]) {
-            if dentry.name.to_str().unwrap() == filename {
+            if dentry.name.to_str().expect("name to str failed") == filename {
+                //println!("inode num {}", dentry.inode_num);
                 return Some(self.get_inode_by_id(dentry.inode_num));
+            } else {
+                //println!("{} {}", dentry.name.to_str().expect("g"), filename);
             }
             i += dentry.size;
         }
@@ -142,7 +158,7 @@ impl<'a> FileSystem<'a> {
         if id == 0 {
             panic!("invalid inode id");
         }
-        let start = (self.sb.block_size * id) as usize;
+        let start = (128 * id) as usize;
         let data: [u8; 128] = self.inodes[start..start + 128]
             .try_into()
             .expect(&format!("failed to load inode {}", id));
@@ -258,21 +274,28 @@ struct Dentry<'a> {
 impl<'a> Dentry<'a> {
     fn from(data: &'a [u8]) -> Option<Self> {
         if data.len() < 8 {
+            println!("too small");
             return None;
             //"dentry too small"
         }
         let inode_num = inode_p::from_le_bytes(data[0..4].try_into().unwrap());
         if inode_num == 0 {
+            println!("inode 0");
             return None;
         }
         let size = u32::from_le_bytes(data[4..8].try_into().unwrap());
         if data.len() < (8 + size) as usize {
+            println!("size wrong");
             return None;
             //"dir name size incorrect"
         }
         Some(Self {
             inode_num,
-            name: CStr::from_bytes_with_nul(&data[8..]).expect("bad file name"),
+            name: CStr::from_bytes_with_nul(&data[8..8 + size as usize]).expect(&format!(
+                "bad file name {:?} size = {}",
+                &data[8..8 + size as usize],
+                size
+            )),
             size: size as usize + 8,
         })
     }
