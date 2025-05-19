@@ -24,13 +24,19 @@ fn main() {
 
     let mut f = types::FileSystem::new(&mut map[..]);
     // println!("{:?}", f);
-    // f.format(1024, 16384);
+    f.format(1024, 16384);
 
     // f.test();
-    f.create_file(c"foo", &['L' as u8, 'O' as u8, 'L' as u8, 0]);
-    f.create_file(c"boo", &['M' as u8, 'O' as u8, 'L' as u8, 0]);
-    f.create_directory(c"XD");
-    f.create_file(c"XD/xd", &[1u8, 2, 3, 4, 5]);
+    println!(
+        "{:?}",
+        f.create_file(c"foo", &['L' as u8, 'O' as u8, 'L' as u8, 0])
+    );
+    println!(
+        "{:?}",
+        f.create_file(c"boo", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+    );
+    println!("{:?}", f.create_directory(c"XD"));
+    println!("{:?}", f.create_file(c"XD/xd", &[1u8, 2, 3, 4, 5]));
     // f.create_file(
     //     c"goo",
     //     &[1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
@@ -47,6 +53,24 @@ fn main() {
     f.write_file(c"XD/xd", &[5, 4, 3, 2, 1]);
     println!("xd: {:?}", f.read_file(c"XD/xd").unwrap());
     println!("{:?}", f.create_file(c"XD/xd", &[0u8]));
+    println!("{:?}", f.create_directory(c"XD/LUL"));
+    println!("{:?}", f.create_file(c"XD/LUL/cos tam", &[5u8, 5, 5]));
+    println!("xd: {:?}", f.read_file(c"XD/LUL/cos tam").unwrap());
+    f.unlink_file(c"/boo").expect("failed to delete");
+    println!("XD: {:?}", f.read_file(c"XD").unwrap());
+    println!("xd: {:?}", f.read_file(c"XD/LUL/cos tam").unwrap());
+    println!(
+        "{:?}",
+        f.create_file(c"asdfghjkl", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+    );
+    println!(
+        "{:?}",
+        f.create_file(c"g", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+    );
+    f.unlink_file(c"/g").expect("failed to delete");
+    f.unlink_file(c"/foo").expect("failed to delete");
+    f.create_file(c"qwertyui", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+        .expect("failed");
 
     //f.save();
     //println!("{:?}", f);
