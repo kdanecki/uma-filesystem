@@ -81,7 +81,7 @@ impl<'a> FileSystem<'a> {
         //self.inode_bitmap.take(1);
         //self.blocks_bitmap.take(1);
         self.save();
-        self.create_inode(1, 1);
+        self.create_inode(1, 1, 0, 2);
         self.inode_bitmap.take(1);
         self.blocks_bitmap.take(1);
     }
@@ -91,26 +91,101 @@ impl<'a> FileSystem<'a> {
         self.data[..28].copy_from_slice(&d);
     }
 
-    pub fn create_file(&mut self, path: &CStr, content: &[u8]) {
-        self.create_file_inter(&self.get_inode_by_id(1), path.to_bytes_with_nul(), content);
+    pub fn create_file(&mut self, path: &CStr, content: &[u8]) -> Result<(), &str> {
+        let path_str = path.to_str().unwrap();
+        let mut node;
+        let filename;
+        if let Some(end) = path_str.rfind('/') {
+            node = self
+                .find_file(&self.get_inode_by_id(1), &path_str[0..end])
+                .expect("file not found");
+            filename = &path[end + 1..];
+        } else {
+            node = self.get_inode_by_id(1);
+            filename = path;
+        }
+
+        if self
+            .search_directory(&mut node, filename.to_str().unwrap())
+            .is_some()
+        {
+            return Err("file already exists");
+        }
+        self.create_file_inter(&mut node, filename.to_bytes(), content, 1);
+        Ok(())
     }
+
+    fn find_file(&self, node: &inode_t, path: &str) -> Option<inode_t> {
+        if let Some(offset) = path.find('/') {
+            let filename = &path[0..offset];
+            println!("{:?}", filename.as_bytes());
+            if let Some(sub_node) = self.search_directory(node, filename) {
+                if sub_node.type_perm == 2 {
+                    println!(
+                        "subnode foid off {}searching {}",
+                        offset,
+                        &path[offset + 1..]
+                    );
+                    return self.find_file(&sub_node, &path[offset + 1..]);
+                }
+            } else {
+                return None;
+            }
+        } else {
+            return self.search_directory(node, path);
+        };
+
+        None
+    }
+
+    pub fn create_directory(&mut self, path: &CStr) {
+        let path_str = path.to_str().unwrap();
+        if let Some(end) = path_str.rfind('/') {
+            let mut dir = self
+                .find_file(&self.get_inode_by_id(1), &path_str[0..end])
+                .expect("file not found");
+            self.create_file_inter(&mut dir, path[end + 1..].to_bytes(), &[], 2);
+        } else {
+            self.create_file_inter(&mut self.get_inode_by_id(1), path.to_bytes(), &[], 2);
+        }
+    }
+
+    pub fn write_file(&mut self, path: &CStr, content: &[u8]) {
+        if let Some(node) = self.find_file(&self.get_inode_by_id(1), path.to_str().unwrap()) {
+            self.get_data_block_mut(node.direct_blocks[0])[0..content.len()]
+                .copy_from_slice(content);
+        } else {
+            println!("file not found");
+        }
+    }
+
     pub fn read_file(&self, path: &CStr) -> Option<&[u8]> {
-        if let Some(node) = self.search_directory(&self.get_inode_by_id(1), path) {
+        if let Some(node) = self.find_file(&self.get_inode_by_id(1), path.to_str().unwrap()) {
             // println!(
             //     "reading from node {:#?} block {}",
             //     node, node.direct_blocks[0]
             // );
-            return Some(self.get_data_block(node.direct_blocks[0]));
+            return Some(&self.get_data_block(node.direct_blocks[0])[0..node.size as usize]);
         }
         None
     }
 
-    fn create_file_inter(&mut self, node: &inode_t, name: &[u8], content: &[u8]) {
+    fn create_file_inter(
+        &mut self,
+        node: &mut inode_t,
+        name: &[u8],
+        content: &[u8],
+        type_perm: u16,
+    ) {
         let mut i = 0usize;
         let inode_num = self.inode_bitmap.get_first_free();
         let block_num = self.blocks_bitmap.get_first_free();
 
         //create dentry
+        // if node.direct_blocks[0] == 0 {
+        //     node.direct_blocks[0] = self.blocks_bitmap.get_first_free() as u32;
+        //     println!("occupy block");
+        // }
         let data = self.get_data_block_mut(node.direct_blocks[0]);
         while let Some(dentry) = Dentry::from(&data[i..]) {
             i += dentry.size;
@@ -121,33 +196,30 @@ impl<'a> FileSystem<'a> {
         data[i + 8..i + 8 + name_len].copy_from_slice(name);
 
         //create inode
-        self.create_inode(inode_num, block_num);
+        self.create_inode(inode_num, block_num, content.len() as u32, type_perm);
 
         //create data block
-        self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content)
+        self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content);
     }
 
     pub fn test(&self) {
         //println!("{:?}", self.get_inode_by_id(1));
         //println!("{:?}", self.get_inode_by_id(2));
+        println!("{:?}", self.find_file(&self.get_inode_by_id(1), "foo"));
     }
 
-    fn search_directory(&self, node: &inode_t, path: &CStr) -> Option<inode_t> {
+    fn search_directory(&self, node: &inode_t, filename: &str) -> Option<inode_t> {
         let mut i = 0usize;
         let data = self.get_data_block(node.direct_blocks[0]);
 
-        let filename = if let Some(offset) = path.to_str().expect("invalid dir name").find('/') {
-            &path.to_str().unwrap()[0..offset]
-        } else {
-            path.to_str().unwrap()
-        };
         //println!("searching filename {}", filename);
         while let Some(dentry) = Dentry::from(&data[i..]) {
-            if dentry.name.to_str().expect("name to str failed") == filename {
+            if dentry.name == filename {
                 //println!("inode num {}", dentry.inode_num);
                 return Some(self.get_inode_by_id(dentry.inode_num));
             } else {
-                //println!("{} {}", dentry.name.to_str().expect("g"), filename);
+                // println!("{:?} {:?}", dentry.name.as_bytes(), filename.as_bytes());
+                //println!("{:?} {:?}", dentry.name, filename);
             }
             i += dentry.size;
         }
@@ -165,16 +237,16 @@ impl<'a> FileSystem<'a> {
         zerocopy::transmute!(data)
     }
 
-    pub fn get_inode(&mut self, path: &CStr) {
-        let d: [u8; 128] = self.inodes[0..128].try_into().unwrap();
-        let root: inode_t = zerocopy::transmute!(d);
-        self.search_directory(&root, path);
-    }
+    // pub fn get_inode(&mut self, path: &CStr) {
+    //     let d: [u8; 128] = self.inodes[0..128].try_into().unwrap();
+    //     let root: inode_t = zerocopy::transmute!(d);
+    //     self.search_directory(&root, path);
+    // }
 
-    pub fn create_inode(&mut self, i: usize, b: usize) {
+    pub fn create_inode(&mut self, id: usize, first_block: usize, size: u32, type_perm: u16) {
         // let i = self.inode_bitmap.get_first_free();
         let mut blocks = [0u32; 12];
-        blocks[0] = b as u32; //self.blocks_bitmap.get_first_free() as u32;
+        blocks[0] = first_block as u32; //self.blocks_bitmap.get_first_free() as u32;
         println!("block {}", blocks[0]);
         let time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -182,11 +254,11 @@ impl<'a> FileSystem<'a> {
             .as_secs();
         //let data: [u8; 128] = .try_into().unwrap();
         let node = inode_t {
-            type_perm: 255,
+            type_perm,
             uid: 1,
             gid: 1,
             pad1: 0,
-            size: 0,
+            size,
             pad2: 0,
             access_time: time,
             mod_time: time,
@@ -199,7 +271,7 @@ impl<'a> FileSystem<'a> {
             unused: [0i8; 24],
         };
         let data: [u8; 128] = zerocopy::transmute!(node);
-        self.inodes[i * 128..(i + 1) * 128].copy_from_slice(&data);
+        self.inodes[id * 128..(id + 1) * 128].copy_from_slice(&data);
     }
 
     fn get_data_block_mut(&mut self, id: block_p) -> &mut [u8] {
@@ -267,7 +339,7 @@ impl<'a> Bitmap<'a> {
 
 struct Dentry<'a> {
     inode_num: inode_p,
-    name: &'a CStr,
+    name: &'a str,
     size: usize,
 }
 
@@ -291,7 +363,7 @@ impl<'a> Dentry<'a> {
         }
         Some(Self {
             inode_num,
-            name: CStr::from_bytes_with_nul(&data[8..8 + size as usize]).expect(&format!(
+            name: std::str::from_utf8(&data[8..8 + size as usize]).expect(&format!(
                 "bad file name {:?} size = {}",
                 &data[8..8 + size as usize],
                 size
