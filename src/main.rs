@@ -28,11 +28,11 @@ fn main() {
 
     // f.test();
     println!(
-        "{:?}",
+        "create foo {:?}",
         f.create_file(c"foo", &['L' as u8, 'O' as u8, 'L' as u8, 0])
     );
     println!(
-        "{:?}",
+        "create boo {:?}",
         f.create_file(c"boo", &['M' as u8, 'O' as u8, 'L' as u8, 0])
     );
     println!("{:?}", f.create_directory(c"XD"));
@@ -59,6 +59,7 @@ fn main() {
     f.unlink_file(c"/boo").expect("failed to delete");
     println!("XD: {:?}", f.read_file(c"XD").unwrap());
     println!("xd: {:?}", f.read_file(c"XD/LUL/cos tam").unwrap());
+    println!("del XD {:?}", f.unlink_dir(c"/XD"));
     println!(
         "{:?}",
         f.create_file(c"asdfghjkl", &['M' as u8, 'O' as u8, 'L' as u8, 0])
@@ -68,9 +69,12 @@ fn main() {
         f.create_file(c"g", &['M' as u8, 'O' as u8, 'L' as u8, 0])
     );
     f.unlink_file(c"/g").expect("failed to delete");
-    f.unlink_file(c"/foo").expect("failed to delete");
-    f.create_file(c"qwertyui", &['M' as u8, 'O' as u8, 'L' as u8, 0])
-        .expect("failed");
+    f.unlink_file(c"XD/LUL/cos tam").expect("failed to delete");
+    println!("delete LUL {:?}", f.unlink_dir(c"XD/LUL"));
+    println!(
+        "{:?}",
+        f.create_file(c"qwertyui", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+    );
 
     //f.save();
     //println!("{:?}", f);

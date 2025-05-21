@@ -1,5 +1,6 @@
 use std::{
     ffi::CStr,
+    os::unix::process::parent_id,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -84,6 +85,18 @@ impl<'a> FileSystem<'a> {
         //self.blocks_bitmap.take(1);
         self.save();
         self.create_inode(1, 1, 0, 2);
+
+        // TODO fix this
+        let inode_num = 1;
+        let mut data = [0u8; 22];
+        data[..4].copy_from_slice(&(inode_num as u32).to_le_bytes());
+        data[4..8].copy_from_slice(&1u32.to_le_bytes());
+        data[8..9].copy_from_slice(".".as_bytes());
+
+        data[12..16].copy_from_slice(&(inode_num as u32).to_le_bytes());
+        data[16..20].copy_from_slice(&2u32.to_le_bytes());
+        data[20..22].copy_from_slice("..".as_bytes());
+        self.get_data_block_mut(1 as u32)[0..data.len()].copy_from_slice(&data);
         self.inode_bitmap.take(1);
         self.blocks_bitmap.take(1);
     }
@@ -117,6 +130,37 @@ impl<'a> FileSystem<'a> {
         } else {
             return Err("bad filename format");
         }
+    }
+
+    pub fn unlink_dir(&mut self, path: &CStr) -> Result<(), &str> {
+        let path = path.to_str().unwrap();
+        if let Some(offset) = path.rfind('/') {
+            if let Some(node) = self.find_file(&path[..offset]) {
+                if node.type_perm == 2 {
+                    if let Some(id) = self.search_inode_id_dir(&node, &path[offset + 1..]) {
+                        let file = self.get_inode_by_id(id);
+                        if file.type_perm == 2 {
+                            let mut data = self.get_data_block(file.direct_blocks[0]);
+                            while let Some(d) = Dentry::from(&data[..]) {
+                                println!("{:?}", d);
+                                if !(d.name == "." || d.name == "..") {
+                                    return Err("directory not empty");
+                                }
+                                data = &data[d.size..];
+                            }
+                            self.blocks_bitmap.free(file.direct_blocks[0] as usize);
+                            self.inode_bitmap.free(id as usize);
+                            self.clear_dentry(&node, &path[offset + 1..]);
+
+                            return Ok(());
+                        }
+                        return Err("not a directory");
+                    }
+                }
+            }
+            return Err("file not found");
+        }
+        Err("bad filename format")
     }
 
     fn find_file(&self, path: &str) -> Option<inode_t> {
@@ -220,6 +264,20 @@ impl<'a> FileSystem<'a> {
         self.create_inode(inode_num, block_num, content.len() as u32, type_perm);
 
         //create data block
+        if type_perm == 2 {
+            let mut data = [0u8; 22];
+            data[..4].copy_from_slice(&(inode_num as u32).to_le_bytes());
+            data[4..8].copy_from_slice(&1u32.to_le_bytes());
+            data[8..9].copy_from_slice(".".as_bytes());
+
+            let parent_id = self
+                .search_inode_id_dir(&node, ".")
+                .expect("parent does not have \".\"");
+            data[12..16].copy_from_slice(&(parent_id as u32).to_le_bytes());
+            data[16..20].copy_from_slice(&2u32.to_le_bytes());
+            data[20..22].copy_from_slice("..".as_bytes());
+            self.get_data_block_mut(block_num as u32)[0..data.len()].copy_from_slice(&data);
+        }
         self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content);
 
         Ok(())
@@ -281,10 +339,11 @@ impl<'a> FileSystem<'a> {
                 //println!("inode num {}", dentry.inode_num);
                 return Some(dentry.inode_num);
             } else {
-                // println!("{:?} {:?}", dentry.name.as_bytes(), filename.as_bytes());
+                println!("{:?} {:?}", dentry.name.as_bytes(), filename.as_bytes());
                 // println!("{:?} {:?}", dentry.name, filename);
             }
             i += dentry.size;
+            println!("{i}");
         }
         None
     }
@@ -411,6 +470,7 @@ impl<'a> Bitmap<'a> {
     }
 }
 
+#[derive(Debug)]
 struct Dentry<'a> {
     inode_num: inode_p,
     name: &'a str,
@@ -420,7 +480,11 @@ struct Dentry<'a> {
 impl<'a> Dentry<'a> {
     fn from(data: &'a [u8]) -> Option<Self> {
         let mut data = &data[..];
+        let mut i = 0;
+        // println!("foo {i} {:?}", &data[0..4]);
         while data.len() >= 8 && u32::from_le_bytes(data[0..4].try_into().unwrap()) == 0 {
+            // println!("ups");
+            i += 4;
             data = &data[4..];
         }
         if data.len() < 8 {
@@ -436,6 +500,7 @@ impl<'a> Dentry<'a> {
         let size = u32::from_le_bytes(data[4..8].try_into().unwrap());
         if data.len() < (8 + size) as usize {
             println!("size wrong");
+            println!("{} {}", data.len(), 8 + size);
             return None;
             //"dir name size incorrect"
         }
@@ -447,10 +512,10 @@ impl<'a> Dentry<'a> {
                 size
             )),
             size: match size % 4 {
-                0 => size as usize + 8,
-                1 => size as usize + 8 + 3,
-                2 => size as usize + 8 + 2,
-                3 => size as usize + 8 + 1,
+                0 => size as usize + 8 + i,
+                1 => size as usize + 8 + i + 3,
+                2 => size as usize + 8 + i + 2,
+                3 => size as usize + 8 + i + 1,
                 _ => unreachable!("modulo lol"),
             },
         })
@@ -466,8 +531,10 @@ struct DentryMut<'a> {
 impl<'a> DentryMut<'a> {
     fn from(data: &'a mut [u8]) -> Option<Self> {
         let mut data = &mut data[..];
+        let mut i = 0;
         while data.len() >= 8 && u32::from_le_bytes(data[0..4].try_into().unwrap()) == 0 {
             data = &mut data[4..];
+            i += 4;
         }
         if data.len() < 8 {
             println!("too small");
@@ -489,10 +556,10 @@ impl<'a> DentryMut<'a> {
             inode_num,
             // size: size as usize + 8,
             size: match size % 4 {
-                0 => size as usize + 8,
-                1 => size as usize + 8 + 3,
-                2 => size as usize + 8 + 2,
-                3 => size as usize + 8 + 1,
+                0 => size as usize + 8 + i,
+                1 => size as usize + 8 + i + 3,
+                2 => size as usize + 8 + i + 2,
+                3 => size as usize + 8 + i + 1,
                 _ => unreachable!("modulo lol"),
             },
             data: &mut data[..8 + size as usize],
