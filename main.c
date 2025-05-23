@@ -1,4 +1,5 @@
 #include "stdio.h"
+#include <sys/types.h>
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
 #include <errno.h>
@@ -13,7 +14,7 @@ int c_getattr(const char* path, struct stat* stbuf)
     int res = rs_getattr(fs, path, &node);
     if (res == 0)
     {
-        stbuf->st_mode = node.type_perm == 2 ? S_IFDIR | 0755 : S_IFREG | 0444;
+        stbuf->st_mode = node.type_perm == 2 ? S_IFDIR | 0755 : S_IFREG | 0666;
     		stbuf->st_nlink = node.hard_links;
     		stbuf->st_uid = node.uid;
     		stbuf->st_gid = node.gid;
@@ -54,11 +55,29 @@ int c_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return -ENOENT;
 }
 
+int c_create(const char* path, mode_t mode, struct fuse_file_info* fi)
+{
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    if (rs_create(fs, path) == 0)
+        return 0;
+    
+    return -EPERM;
+}
+
+int c_write(const char* path, const char* buf, size_t size, off_t off, struct fuse_file_info* fi)
+{
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    int ret = rs_write(fs, path, buf, size);
+    return ret ? ret : -ENODATA;
+}
+
 static struct fuse_operations my_oper = {
     .getattr = c_getattr,
     .open = c_open,
     .read = c_read,
     .readdir = c_readdir,
+    .create = c_create,
+    .write = c_write,
 };
 
 int main(int argc, char *argv[])

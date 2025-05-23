@@ -9,6 +9,7 @@ use memmap2::MmapMut;
 
 use crate::types::*;
 
+/// cbindgen:no-export
 type fuse_fill_dir_t = unsafe extern "C" fn(
     buf: *mut ::std::os::raw::c_void,
     name: *const ::std::os::raw::c_char,
@@ -75,6 +76,29 @@ pub unsafe extern "C" fn rs_readdir(
         return 0;
     }
     return -1;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rs_create(
+    fs: *mut FileSystem,
+    filename: *const ::std::os::raw::c_char,
+) -> i32 {
+    if (*fs).create_file(CStr::from_ptr(filename), &[]).is_ok() {
+        return 0;
+    }
+    return -1;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rs_write(
+    fs: *mut FileSystem,
+    filename: *const ::std::os::raw::c_char,
+    content: *const ::std::os::raw::c_char,
+    size: usize,
+) -> i32 {
+    let content: &[u8] = slice::from_raw_parts(content as *const u8, size);
+    (*fs).write_file(CStr::from_ptr(filename), content);
+    return size as i32;
 }
 
 #[no_mangle]

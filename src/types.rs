@@ -213,12 +213,15 @@ impl<'a> FileSystem<'a> {
         self.create_file_inter(path, &[], 2)
     }
 
-    pub fn write_file(&mut self, path: &CStr, content: &[u8]) {
-        if let Some(node) = self.find_file(path.to_str().unwrap()) {
+    pub fn write_file(&mut self, path: &CStr, content: &[u8]) -> i32 {
+        if let Some(mut node) = self.find_file(path.to_str().unwrap()) {
             self.get_data_block_mut(node.direct_blocks[0])[0..content.len()]
                 .copy_from_slice(content);
+            node.size = content.len() as u32;
+            return content.len() as i32;
         } else {
             println!("file not found");
+            return 0;
         }
     }
 

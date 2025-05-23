@@ -2,7 +2,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <fuse.h>
 
 typedef struct FileSystem FileSystem;
 
@@ -26,7 +25,6 @@ typedef struct inode_t {
   char unused[24];
 } inode_t;
 
-
 typedef struct superblock_t {
   char header[8];
   unsigned int inodes_num;
@@ -38,7 +36,6 @@ typedef struct superblock_t {
 
 typedef unsigned int inode_p;
 
-
 int32_t rs_getattr(struct FileSystem *fs, const char *filename, struct inode_t *inode_buf);
 
 int32_t rs_open(struct FileSystem *fs, const char *filename);
@@ -46,6 +43,10 @@ int32_t rs_open(struct FileSystem *fs, const char *filename);
 int32_t rs_read(struct FileSystem *fs, const char *filename, int8_t *buf, uintptr_t size);
 
 int32_t rs_readdir(struct FileSystem *fs, const char *filename, void *buf, fuse_fill_dir_t filler);
+
+int32_t rs_create(struct FileSystem *fs, const char *filename);
+
+int32_t rs_write(struct FileSystem *fs, const char *filename, const char *content, uintptr_t size);
 
 struct FileSystem *rs_init(void);
 
