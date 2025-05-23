@@ -1,3 +1,4 @@
+mod bindings;
 mod types;
 use memmap2::*;
 //use memmap2::MmapMut;
@@ -25,56 +26,12 @@ fn main() {
     let mut f = types::FileSystem::new(&mut map[..]);
     // println!("{:?}", f);
     f.format(1024, 16384);
+    f.dummy_data();
+
+    println!("{:?}", f.get_files_in_dir(c"/"));
+    println!("{:?}", f.get_attr(c"/."));
 
     // f.test();
-    println!(
-        "create foo {:?}",
-        f.create_file(c"foo", &['L' as u8, 'O' as u8, 'L' as u8, 0])
-    );
-    println!(
-        "create boo {:?}",
-        f.create_file(c"boo", &['M' as u8, 'O' as u8, 'L' as u8, 0])
-    );
-    println!("{:?}", f.create_directory(c"XD"));
-    println!("{:?}", f.create_file(c"XD/xd", &[1u8, 2, 3, 4, 5]));
-    // f.create_file(
-    //     c"goo",
-    //     &[1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-    // );
-    println!("READS");
-    println!(
-        "foo: {:?}",
-        CStr::from_bytes_until_nul(f.read_file(c"foo").unwrap())
-    );
-    println!("foo: {:?}", f.read_file(c"foo").unwrap());
-    println!("boo: {:?}", f.read_file(c"boo").unwrap());
-    println!("XD: {:?}", f.read_file(c"XD").unwrap());
-    println!("xd: {:?}", f.read_file(c"XD/xd").unwrap());
-    f.write_file(c"XD/xd", &[5, 4, 3, 2, 1]);
-    println!("xd: {:?}", f.read_file(c"XD/xd").unwrap());
-    println!("{:?}", f.create_file(c"XD/xd", &[0u8]));
-    println!("{:?}", f.create_directory(c"XD/LUL"));
-    println!("{:?}", f.create_file(c"XD/LUL/cos tam", &[5u8, 5, 5]));
-    println!("xd: {:?}", f.read_file(c"XD/LUL/cos tam").unwrap());
-    f.unlink_file(c"/boo").expect("failed to delete");
-    println!("XD: {:?}", f.read_file(c"XD").unwrap());
-    println!("xd: {:?}", f.read_file(c"XD/LUL/cos tam").unwrap());
-    println!("del XD {:?}", f.unlink_dir(c"/XD"));
-    println!(
-        "{:?}",
-        f.create_file(c"asdfghjkl", &['M' as u8, 'O' as u8, 'L' as u8, 0])
-    );
-    println!(
-        "{:?}",
-        f.create_file(c"g", &['M' as u8, 'O' as u8, 'L' as u8, 0])
-    );
-    f.unlink_file(c"/g").expect("failed to delete");
-    f.unlink_file(c"XD/LUL/cos tam").expect("failed to delete");
-    println!("delete LUL {:?}", f.unlink_dir(c"XD/LUL"));
-    println!(
-        "{:?}",
-        f.create_file(c"qwertyui", &['M' as u8, 'O' as u8, 'L' as u8, 0])
-    );
 
     //f.save();
     //println!("{:?}", f);

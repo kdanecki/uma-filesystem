@@ -106,15 +106,23 @@ impl<'a> FileSystem<'a> {
         self.data[..28].copy_from_slice(&d);
     }
 
+    pub fn get_attr(&self, path: &CStr) -> Option<inode_t> {
+        self.find_file(path.to_str().unwrap())
+    }
+
     pub fn create_file(&mut self, path: &CStr, content: &[u8]) -> Result<(), &str> {
-        self.create_file_inter(path, content, 1)
+        return self.create_file_inter(path, content, 1);
     }
 
     pub fn unlink_file(&mut self, path: &CStr) -> Result<(), &str> {
         // TODO check nlink
         let path = path.to_str().unwrap();
         if let Some(offset) = path.rfind('/') {
-            if let Some(node) = self.find_file(&path[..offset]) {
+            if let Some(node) = if offset == 0 {
+                Some(self.get_inode_by_id(1))
+            } else {
+                self.find_file(&path[..offset])
+            } {
                 if node.type_perm == 2 {
                     if let Some(id) = self.search_inode_id_dir(&node, &path[offset + 1..]) {
                         let file = self.get_inode_by_id(id);
@@ -135,7 +143,11 @@ impl<'a> FileSystem<'a> {
     pub fn unlink_dir(&mut self, path: &CStr) -> Result<(), &str> {
         let path = path.to_str().unwrap();
         if let Some(offset) = path.rfind('/') {
-            if let Some(node) = self.find_file(&path[..offset]) {
+            if let Some(node) = if offset == 0 {
+                Some(self.get_inode_by_id(1))
+            } else {
+                self.find_file(&path[..offset])
+            } {
                 if node.type_perm == 2 {
                     if let Some(id) = self.search_inode_id_dir(&node, &path[offset + 1..]) {
                         let file = self.get_inode_by_id(id);
@@ -165,16 +177,19 @@ impl<'a> FileSystem<'a> {
 
     fn find_file(&self, path: &str) -> Option<inode_t> {
         let root = self.get_inode_by_id(1);
-        if path == "" {
+        if path == "/" {
             return Some(root);
         }
-        self.find_file_inter(&root, path)
+        if &path[0..1] == "/" {
+            return self.find_file_inter(&root, &path[1..]);
+        }
+        None
     }
 
     fn find_file_inter(&self, node: &inode_t, path: &str) -> Option<inode_t> {
         if let Some(offset) = path.find('/') {
             let filename = &path[0..offset];
-            println!("{:?}", filename.as_bytes());
+            // println!("{:?}", filename.as_bytes());
             if let Some(sub_node) = self.search_directory(node, filename) {
                 if sub_node.type_perm == 2 {
                     // println!(
@@ -224,15 +239,24 @@ impl<'a> FileSystem<'a> {
         content: &[u8],
         type_perm: u16,
     ) -> Result<(), &str> {
+        // if !(path.count_bytes() > 0 && &path.to_str().unwrap()[0..1] == "/") {
+        //     return Err("invalid path");
+        // }
+        // let path = &path[1..];
         let path_str = path.to_str().unwrap();
         let mut node;
         let filename;
+
         if let Some(end) = path_str.rfind('/') {
-            node = self.find_file(&path_str[0..end]).expect("file not found");
-            filename = &path[end + 1..];
+            if end == 0 {
+                node = self.get_inode_by_id(1);
+                filename = &path[1..];
+            } else {
+                node = self.find_file(&path_str[0..end]).expect("file not found");
+                filename = &path[end + 1..];
+            }
         } else {
-            node = self.get_inode_by_id(1);
-            filename = path;
+            return Err("invalid path");
         }
 
         if self
@@ -307,10 +331,78 @@ impl<'a> FileSystem<'a> {
         None
     }
 
+    pub fn get_files_in_dir(&self, path: &CStr) -> Vec<String> {
+        let mut files = vec![];
+        if let Some(node) = self.find_file(path.to_str().unwrap()) {
+            if node.type_perm == 2 {
+                let mut data = self.get_data_block(node.direct_blocks[0]);
+                while let Some(dentry) = Dentry::from(data) {
+                    files.push(String::from(dentry.name));
+                    data = &data[dentry.size..];
+                }
+            }
+        }
+        return files;
+    }
+
+    pub fn dummy_data(&mut self) {
+        println!(
+            "create foo {:?}",
+            self.create_file(c"/foo", &['L' as u8, 'O' as u8, 'L' as u8, 0])
+        );
+        println!(
+            "create boo {:?}",
+            self.create_file(c"/boo", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+        );
+        println!("{:?}", self.create_directory(c"/XD"));
+        println!("{:?}", self.create_file(c"/XD/xd", &[1u8, 2, 3, 4, 5]));
+        // self.create_file(
+        //     c"goo",
+        //     &[1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        // );
+        println!("READS");
+        println!(
+            "foo: {:?}",
+            CStr::from_bytes_until_nul(self.read_file(c"/foo").unwrap())
+        );
+        println!("foo: {:?}", self.read_file(c"/foo").unwrap());
+        println!("boo: {:?}", self.read_file(c"/boo").unwrap());
+        println!("XD: {:?}", self.read_file(c"/XD").unwrap());
+        println!("xd: {:?}", self.read_file(c"/XD/xd").unwrap());
+        self.write_file(c"/XD/xd", &[5, 4, 3, 2, 1]);
+        println!("xd: {:?}", self.read_file(c"/XD/xd").unwrap());
+        println!("{:?}", self.create_file(c"/XD/xd", &[0u8]));
+        println!("{:?}", self.create_directory(c"/XD/LUL"));
+        println!("{:?}", self.create_file(c"/XD/LUL/cos tam", &[5u8, 5, 5]));
+        println!("xd: {:?}", self.read_file(c"/XD/LUL/cos tam").unwrap());
+        println!("DELETE");
+        println!("{:?}", self.unlink_file(c"/boo"));
+        println!("XD: {:?}", self.read_file(c"/XD").unwrap());
+        println!("xd: {:?}", self.read_file(c"/XD/LUL/cos tam").unwrap());
+        println!("del XD {:?}", self.unlink_dir(c"/XD"));
+        println!(
+            "{:?}",
+            self.create_file(c"/asdfghjkl", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+        );
+        println!(
+            "{:?}",
+            self.create_file(c"/g", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+        );
+        self.unlink_file(c"/g").expect("failed to delete");
+        self.unlink_file(c"/XD/LUL/cos tam")
+            .expect("failed to delete");
+        println!("delete LUL {:?}", self.unlink_dir(c"/XD/LUL"));
+        println!(
+            "{:?}",
+            self.create_file(c"/qwertyui", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+        );
+    }
+
     pub fn test(&self) {
+        println!("SUPERB {:?}", self.sb);
         //println!("{:?}", self.get_inode_by_id(1));
         //println!("{:?}", self.get_inode_by_id(2));
-        println!("{:?}", self.find_file("foo"));
+        println!("{:?}", self.find_file("/foo"));
     }
 
     fn clear_dentry(&mut self, node: &inode_t, filename: &str) {
@@ -319,7 +411,7 @@ impl<'a> FileSystem<'a> {
 
         //println!("searching filename {}", filename);
         while let Some(mut dentry) = DentryMut::from(&mut data[i..]) {
-            println!("{i}");
+            // println!("{i}");
             if dentry.get_name() == filename {
                 dentry.delete();
                 return;
@@ -339,11 +431,11 @@ impl<'a> FileSystem<'a> {
                 //println!("inode num {}", dentry.inode_num);
                 return Some(dentry.inode_num);
             } else {
-                println!("{:?} {:?}", dentry.name.as_bytes(), filename.as_bytes());
+                // println!("{:?} {:?}", dentry.name.as_bytes(), filename.as_bytes());
                 // println!("{:?} {:?}", dentry.name, filename);
             }
             i += dentry.size;
-            println!("{i}");
+            // println!("{i}");
         }
         None
     }
@@ -376,7 +468,7 @@ impl<'a> FileSystem<'a> {
         // let i = self.inode_bitmap.get_first_free();
         let mut blocks = [0u32; 12];
         blocks[0] = first_block as u32; //self.blocks_bitmap.get_first_free() as u32;
-        println!("block {}", blocks[0]);
+                                        // println!("block {}", blocks[0]);
         let time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time went back")

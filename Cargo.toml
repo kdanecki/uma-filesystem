@@ -3,6 +3,9 @@ name = "fs_rust"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
 memmap2 = "0.9.5"
 zerocopy = "0.8.25"
