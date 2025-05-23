@@ -124,7 +124,7 @@ impl<'a> FileSystem<'a> {
                 self.find_file(&path[..offset])
             } {
                 if node.type_perm == 2 {
-                    if let Some(id) = self.search_inode_id_dir(&node, &path[offset + 1..]) {
+                    if let Some(id) = self.search_directory_get_id(&node, &path[offset + 1..]) {
                         let file = self.get_inode_by_id(id);
                         self.blocks_bitmap.free(file.direct_blocks[0] as usize);
                         self.inode_bitmap.free(id as usize);
@@ -149,7 +149,7 @@ impl<'a> FileSystem<'a> {
                 self.find_file(&path[..offset])
             } {
                 if node.type_perm == 2 {
-                    if let Some(id) = self.search_inode_id_dir(&node, &path[offset + 1..]) {
+                    if let Some(id) = self.search_directory_get_id(&node, &path[offset + 1..]) {
                         let file = self.get_inode_by_id(id);
                         if file.type_perm == 2 {
                             let mut data = self.get_data_block(file.direct_blocks[0]);
@@ -209,15 +209,52 @@ impl<'a> FileSystem<'a> {
         None
     }
 
+    fn find_file_mut(&self, path: &str) -> Option<(inode_t, inode_p)> {
+        let root = self.get_inode_by_id(1);
+        if path == "/" {
+            return Some((root, 1));
+        }
+        if &path[0..1] == "/" {
+            return self.find_file_mut_inter(&root, &path[1..]);
+        }
+        None
+    }
+
+    fn find_file_mut_inter(&self, node: &inode_t, path: &str) -> Option<(inode_t, inode_p)> {
+        if let Some(offset) = path.find('/') {
+            let filename = &path[0..offset];
+            // println!("{:?}", filename.as_bytes());
+            if let Some(sub_node) = self.search_directory(node, filename) {
+                if sub_node.type_perm == 2 {
+                    // println!(
+                    //     "subnode foid off {}searching {}",
+                    //     offset,
+                    //     &path[offset + 1..]
+                    // );
+                    return self.find_file_mut_inter(&sub_node, &path[offset + 1..]);
+                }
+            } else {
+                return None;
+            }
+        } else {
+            if let Some(id) = self.search_directory_get_id(node, path) {
+                return Some((self.get_inode_by_id(id), id));
+            }
+        };
+
+        None
+    }
+
     pub fn create_directory(&mut self, path: &CStr) -> Result<(), &str> {
         self.create_file_inter(path, &[], 2)
     }
 
     pub fn write_file(&mut self, path: &CStr, content: &[u8]) -> i32 {
-        if let Some(mut node) = self.find_file(path.to_str().unwrap()) {
+        if let Some((mut node, id)) = self.find_file_mut(path.to_str().unwrap()) {
             self.get_data_block_mut(node.direct_blocks[0])[0..content.len()]
                 .copy_from_slice(content);
             node.size = content.len() as u32;
+            self.save_inode(id, node);
             return content.len() as i32;
         } else {
             println!("file not found");
@@ -298,7 +335,7 @@ impl<'a> FileSystem<'a> {
             data[8..9].copy_from_slice(".".as_bytes());
 
             let parent_id = self
-                .search_inode_id_dir(&node, ".")
+                .search_directory_get_id(&node, ".")
                 .expect("parent does not have \".\"");
             data[12..16].copy_from_slice(&(parent_id as u32).to_le_bytes());
             data[16..20].copy_from_slice(&2u32.to_le_bytes());
@@ -424,7 +461,7 @@ impl<'a> FileSystem<'a> {
         panic!("tried to delete inexisting entry");
     }
 
-    fn search_inode_id_dir(&self, node: &inode_t, filename: &str) -> Option<inode_p> {
+    fn search_directory_get_id(&self, node: &inode_t, filename: &str) -> Option<inode_p> {
         let mut i = 0usize;
         let data = self.get_data_block(node.direct_blocks[0]);
 
@@ -444,7 +481,7 @@ impl<'a> FileSystem<'a> {
     }
 
     fn search_directory(&self, node: &inode_t, filename: &str) -> Option<inode_t> {
-        if let Some(id) = self.search_inode_id_dir(node, filename) {
+        if let Some(id) = self.search_directory_get_id(node, filename) {
             return Some(self.get_inode_by_id(id));
         }
         None
@@ -494,6 +531,12 @@ impl<'a> FileSystem<'a> {
             tri_inblock: 0,
             unused: [0i8; 24],
         };
+        let data: [u8; 128] = zerocopy::transmute!(node);
+        self.inodes[id * 128..(id + 1) * 128].copy_from_slice(&data);
+    }
+
+    fn save_inode(&mut self, id: inode_p, node: inode_t) {
+        let id = id as usize;
         let data: [u8; 128] = zerocopy::transmute!(node);
         self.inodes[id * 128..(id + 1) * 128].copy_from_slice(&data);
     }

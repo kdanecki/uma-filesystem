@@ -71,6 +71,21 @@ int c_write(const char* path, const char* buf, size_t size, off_t off, struct fu
     return ret ? ret : -ENODATA;
 }
 
+int c_utimens()
+{
+    return 0;
+}
+
+int c_truncate()
+{
+    return 0;
+}
+
+int c_chown()
+{
+    return 0;
+}
+
 static struct fuse_operations my_oper = {
     .getattr = c_getattr,
     .open = c_open,
@@ -78,6 +93,9 @@ static struct fuse_operations my_oper = {
     .readdir = c_readdir,
     .create = c_create,
     .write = c_write,
+    .utimens = c_utimens,
+    .truncate = c_truncate,
+    .chown = c_chown,
 };
 
 int main(int argc, char *argv[])
