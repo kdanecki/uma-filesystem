@@ -103,6 +103,39 @@ pub unsafe extern "C" fn rs_write(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn rs_mkdir(
+    fs: *mut FileSystem,
+    filename: *const ::std::os::raw::c_char,
+) -> i32 {
+    if (*fs).create_directory(CStr::from_ptr(filename)).is_ok() {
+        return 0;
+    }
+    return -1;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rs_unlink(
+    fs: *mut FileSystem,
+    filename: *const ::std::os::raw::c_char,
+) -> i32 {
+    if (*fs).unlink_file(CStr::from_ptr(filename)).is_ok() {
+        return 0;
+    }
+    return -1;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rs_rmdir(
+    fs: *mut FileSystem,
+    filename: *const ::std::os::raw::c_char,
+) -> i32 {
+    if (*fs).unlink_dir(CStr::from_ptr(filename)).is_ok() {
+        return 0;
+    }
+    return -1;
+}
+
+#[no_mangle]
 pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
     let block_size = 1024;
     let block_num = 16348;

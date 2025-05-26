@@ -1,4 +1,5 @@
 #include "stdio.h"
+#include <asm-generic/errno-base.h>
 #include <sys/types.h>
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
@@ -22,7 +23,7 @@ int c_getattr(const char* path, struct stat* stbuf)
     		stbuf->st_atime = node.access_time;
     		stbuf->st_mtime = node.mod_time;
     		stbuf->st_ctime = node.creat_time;
-    		stbuf->st_size = 1024;
+    		stbuf->st_size = node.size;
     		stbuf->st_blocks = 2;
     		return 0;
     }
@@ -86,6 +87,27 @@ int c_chown()
     return 0;
 }
 
+int c_mkdir(const char *path, mode_t mode)
+{
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    int res = rs_mkdir(fs, path);
+    return res ? -EEXIST : 0;
+}
+
+int c_unlink(const char* path)
+{
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    int res = rs_unlink(fs, path);
+    return res ? -ENOENT : 0;
+}
+
+int c_rmdir(const char* path)
+{
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    int res = rs_rmdir(fs, path);
+    return res ? -ENOENT : 0;
+}
+
 static struct fuse_operations my_oper = {
     .getattr = c_getattr,
     .open = c_open,
@@ -96,6 +118,9 @@ static struct fuse_operations my_oper = {
     .utimens = c_utimens,
     .truncate = c_truncate,
     .chown = c_chown,
+    .mkdir = c_mkdir,
+    .unlink = c_unlink,
+    .rmdir = c_rmdir,
 };
 
 int main(int argc, char *argv[])

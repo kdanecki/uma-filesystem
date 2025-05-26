@@ -246,7 +246,8 @@ impl<'a> FileSystem<'a> {
     }
 
     pub fn create_directory(&mut self, path: &CStr) -> Result<(), &str> {
-        self.create_file_inter(path, &[], 2)
+        let data = vec![0; self.sb.block_size as usize];
+        self.create_file_inter(path, &data, 2)
     }
 
     pub fn write_file(&mut self, path: &CStr, content: &[u8]) -> i32 {
@@ -328,6 +329,7 @@ impl<'a> FileSystem<'a> {
         self.create_inode(inode_num, block_num, content.len() as u32, type_perm);
 
         //create data block
+        self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content);
         if type_perm == 2 {
             let mut data = [0u8; 22];
             data[..4].copy_from_slice(&(inode_num as u32).to_le_bytes());
@@ -342,7 +344,6 @@ impl<'a> FileSystem<'a> {
             data[20..22].copy_from_slice("..".as_bytes());
             self.get_data_block_mut(block_num as u32)[0..data.len()].copy_from_slice(&data);
         }
-        self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content);
 
         Ok(())
     }

@@ -48,6 +48,12 @@ int32_t rs_create(struct FileSystem *fs, const char *filename);
 
 int32_t rs_write(struct FileSystem *fs, const char *filename, const char *content, uintptr_t size);
 
+int32_t rs_mkdir(struct FileSystem *fs, const char *filename);
+
+int32_t rs_unlink(struct FileSystem *fs, const char *filename);
+
+int32_t rs_rmdir(struct FileSystem *fs, const char *filename);
+
 struct FileSystem *rs_init(void);
 
 extern void *get_block(struct superblock_t *sb, block_p id);
