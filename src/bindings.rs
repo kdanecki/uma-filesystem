@@ -136,6 +136,18 @@ pub unsafe extern "C" fn rs_rmdir(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn rs_truncate(
+    fs: *mut FileSystem,
+    filename: *const ::std::os::raw::c_char,
+    size: usize,
+) -> i32 {
+    if (*fs).truncate(CStr::from_ptr(filename), size).is_ok() {
+        return 0;
+    }
+    return -1;
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn rs_rename(
     fs: *mut FileSystem,
     from: *const ::std::os::raw::c_char,

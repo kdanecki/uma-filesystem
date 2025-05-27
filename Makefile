@@ -5,10 +5,11 @@ all:
 	export LD_LIBRARY_PATH=./target/debug
 
 mount:
-	./a.out -d mp
+	export LD_LIBRARY_PATH=./target/debug; ./a.out -d mp
 
 umount:
 	fusermount -u mp
 
 prod:
+	export LD_LIBRARY_PATH=./target/debug
 	./a.out mp

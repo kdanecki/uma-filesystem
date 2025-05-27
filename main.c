@@ -69,6 +69,8 @@ int c_write(const char* path, const char* buf, size_t size, off_t off, struct fu
 {
     struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
     int ret = rs_write(fs, path, buf, size);
+    if (ret == -1)
+        return -ENOMEM;
     return ret ? ret : -ENODATA;
 }
 
@@ -77,9 +79,11 @@ int c_utimens()
     return 0;
 }
 
-int c_truncate()
+int c_truncate(const char* path, off_t size)
 {
-    return 0;
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    int ret = rs_truncate(fs, path, size);
+    return ret ? -ENOENT : 0;
 }
 
 int c_chown()

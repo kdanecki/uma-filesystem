@@ -298,6 +298,12 @@ impl<'a> FileSystem<'a> {
 
     pub fn write_file(&mut self, path: &CStr, content: &[u8]) -> i32 {
         if let Some((mut node, id)) = self.find_file_mut(path.to_str().unwrap()) {
+            println!("len {}", content.len());
+            if self.truncate(path, content.len()).is_err() {
+                return -1;
+            }
+            let mut node = self.get_inode_by_id(id);
+            println!("{:?}", node.direct_blocks);
             self.get_data_block_mut(node.direct_blocks[0])[0..content.len()]
                 .copy_from_slice(content);
             node.size = content.len() as u32;
@@ -309,13 +315,13 @@ impl<'a> FileSystem<'a> {
         }
     }
 
-    pub fn read_file(&self, path: &CStr) -> Option<&[u8]> {
+    pub fn read_file(&self, path: &CStr) -> Option<Vec<u8>> {
         if let Some(node) = self.find_file(path.to_str().unwrap()) {
             // println!(
             //     "reading from node {:#?} block {}",
             //     node, node.direct_blocks[0]
             // );
-            return Some(&self.get_data_block(node.direct_blocks[0])[0..node.size as usize]);
+            return Some(self.get_file_data(&node));
         }
         None
     }
@@ -422,7 +428,8 @@ impl<'a> FileSystem<'a> {
         let mut files = vec![];
         if let Some(node) = self.find_file(path.to_str().unwrap()) {
             if node.type_perm == 2 {
-                let mut data = self.get_data_block(node.direct_blocks[0]);
+                let d = self.get_dir_data(&node);
+                let mut data = &d[..];
                 while let Some(dentry) = Dentry::from(data) {
                     files.push(String::from(dentry.name));
                     data = &data[dentry.size..];
@@ -430,6 +437,36 @@ impl<'a> FileSystem<'a> {
             }
         }
         return files;
+    }
+
+    fn get_file_data(&self, node: &inode_t) -> Vec<u8> {
+        let mut data = vec![];
+        let mut size = node.size as usize;
+        for i in node.direct_blocks {
+            if i != 0 {
+                if size >= self.sb.block_size as usize {
+                    data.extend_from_slice(self.get_data_block(i));
+                    size -= self.sb.block_size as usize
+                } else {
+                    if size == 0 {
+                        panic!("file has more blocks than it should");
+                    }
+                    data.extend_from_slice(&self.get_data_block(i)[..size]);
+                    size = 0;
+                }
+            }
+        }
+        data
+    }
+
+    fn get_dir_data(&self, node: &inode_t) -> Vec<u8> {
+        let mut data = vec![];
+        for i in node.direct_blocks {
+            if i != 0 {
+                data.extend_from_slice(self.get_data_block(i));
+            }
+        }
+        data
     }
 
     pub fn dummy_data(&mut self) {
@@ -450,7 +487,7 @@ impl<'a> FileSystem<'a> {
         println!("READS");
         println!(
             "foo: {:?}",
-            CStr::from_bytes_until_nul(self.read_file(c"/foo").unwrap())
+            CStr::from_bytes_until_nul(&self.read_file(c"/foo").unwrap())
         );
         println!("foo: {:?}", self.read_file(c"/foo").unwrap());
         println!("boo: {:?}", self.read_file(c"/boo").unwrap());
@@ -510,7 +547,7 @@ impl<'a> FileSystem<'a> {
 
     fn search_directory_get_id(&self, node: &inode_t, filename: &str) -> Option<inode_p> {
         let mut i = 0usize;
-        let data = self.get_data_block(node.direct_blocks[0]);
+        let data = self.get_dir_data(node);
 
         //println!("searching filename {}", filename);
         while let Some(dentry) = Dentry::from(&data[i..]) {
@@ -532,6 +569,45 @@ impl<'a> FileSystem<'a> {
             return Some(self.get_inode_by_id(id));
         }
         None
+    }
+
+    fn calculate_size(&self, node: &inode_t) -> usize {
+        let mut size = 0;
+        for i in node.direct_blocks {
+            if i != 0 {
+                size += self.sb.block_size;
+            } else {
+                break;
+            }
+        }
+        0
+    }
+
+    pub fn truncate(&mut self, path: &CStr, size: usize) -> Result<(), &str> {
+        let path = path.to_str().expect("path should be UTF-8");
+        let mut size = size as isize;
+        if let Some((mut node, id)) = self.find_file_mut(path) {
+            for i in node.direct_blocks.iter_mut() {
+                println!("{size} {}", *i);
+                if size > 0 {
+                    if *i == 0 {
+                        *i = self.blocks_bitmap.get_first_free() as u32;
+                        println!("{}", *i);
+                    }
+                    size -= self.sb.block_size as isize;
+                } else {
+                    if *i != 0 {
+                        self.blocks_bitmap.free(*i as usize);
+                        *i = 0;
+                    }
+                }
+            }
+            println!("{node:?}");
+            self.save_inode(id, node);
+            return Ok(());
+        }
+
+        Err("failed")
     }
 
     fn get_inode_by_id(&self, id: inode_p) -> inode_t {
