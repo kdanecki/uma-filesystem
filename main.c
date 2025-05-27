@@ -87,6 +87,13 @@ int c_chown()
     return 0;
 }
 
+int c_rename(const char* from, const char* to)
+{
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    int res = rs_rename(fs, from, to);
+    return res ? -ENOENT : 0;
+}
+
 int c_mkdir(const char *path, mode_t mode)
 {
     struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
@@ -121,6 +128,7 @@ static struct fuse_operations my_oper = {
     .mkdir = c_mkdir,
     .unlink = c_unlink,
     .rmdir = c_rmdir,
+    .rename = c_rename,
 };
 
 int main(int argc, char *argv[])

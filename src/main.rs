@@ -35,6 +35,9 @@ fn main() {
     f.write_file(c"/blabla", &[1u8, 234, 65]);
     println!("{:?}", f.read_file(c"/blabla"));
 
+    // f.rename(c"/blabla", c"/gogo").unwrap();
+    // f.rename(c"/XD/xd", c"/ijvnbdv/gogo").unwrap();
+
     // f.test();
 
     //f.save();

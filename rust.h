@@ -54,6 +54,8 @@ int32_t rs_unlink(struct FileSystem *fs, const char *filename);
 
 int32_t rs_rmdir(struct FileSystem *fs, const char *filename);
 
+int32_t rs_rename(struct FileSystem *fs, const char *from, const char *to);
+
 struct FileSystem *rs_init(void);
 
 extern void *get_block(struct superblock_t *sb, block_p id);

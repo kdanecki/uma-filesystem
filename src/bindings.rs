@@ -136,6 +136,21 @@ pub unsafe extern "C" fn rs_rmdir(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn rs_rename(
+    fs: *mut FileSystem,
+    from: *const ::std::os::raw::c_char,
+    to: *const ::std::os::raw::c_char,
+) -> i32 {
+    if (*fs)
+        .rename(CStr::from_ptr(from), CStr::from_ptr(to))
+        .is_ok()
+    {
+        return 0;
+    }
+    return -1;
+}
+
+#[no_mangle]
 pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
     let block_size = 1024;
     let block_num = 16348;

@@ -101,6 +101,52 @@ impl<'a> FileSystem<'a> {
         self.blocks_bitmap.take(1);
     }
 
+    pub fn rename(&mut self, from: &CStr, to: &CStr) -> Result<(), &str> {
+        let from = from.to_str().expect("path should be UTF-8");
+        let to = to.to_str().expect("path should be UTF-8");
+        if let Some(offset) = from.rfind('/') {
+            if let Some(dir_from) = if offset == 0 {
+                Some(self.get_inode_by_id(1))
+            } else {
+                self.find_file(&from[..offset])
+            } {
+                if dir_from.type_perm == 2 {
+                    if let Some(id) = self.search_directory_get_id(&dir_from, &from[offset + 1..]) {
+                        if let Some(_) = self.find_file(to) {
+                            return Err("file already exists");
+                        }
+                        if let Some(to_offset) = to.rfind('/') {
+                            if let Some(dir_to) = if to_offset == 0 {
+                                Some(self.get_inode_by_id(1))
+                            } else {
+                                self.find_file(&to[..to_offset])
+                            } {
+                                self.clear_dentry(&dir_from, &from[offset + 1..]);
+
+                                // create dentry
+                                let name = &to[to_offset + 1..].as_bytes();
+                                let data = self.get_data_block_mut(dir_to.direct_blocks[0]);
+                                let data = FileSystem::find_space_for_dentry(data, name.len() + 8)
+                                    .unwrap();
+
+                                data[..4].copy_from_slice(&(id as u32).to_le_bytes());
+                                let name_len = name.len();
+                                data[4..8].copy_from_slice(&(name_len as u32).to_le_bytes());
+                                data[8..8 + name_len].copy_from_slice(name);
+                                return Ok(());
+                            }
+                            return Err("target dir nonexisting");
+                        }
+                    }
+                }
+            }
+            return Err("file not found");
+        } else {
+            return Err("bad filename format");
+        }
+        Err("file not found")
+    }
+
     pub fn save(&mut self) {
         let d: [u8; 28] = zerocopy::transmute!(self.sb);
         self.data[..28].copy_from_slice(&d);
