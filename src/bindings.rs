@@ -96,9 +96,10 @@ pub unsafe extern "C" fn rs_write(
     filename: *const ::std::os::raw::c_char,
     content: *const ::std::os::raw::c_char,
     size: usize,
+    offset: usize,
 ) -> i32 {
     let content: &[u8] = slice::from_raw_parts(content as *const u8, size);
-    (*fs).write_file(CStr::from_ptr(filename), content);
+    (*fs).write_file(CStr::from_ptr(filename), content, offset);
     return size as i32;
 }
 

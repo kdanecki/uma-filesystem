@@ -46,7 +46,11 @@ int32_t rs_readdir(struct FileSystem *fs, const char *filename, void *buf, fuse_
 
 int32_t rs_create(struct FileSystem *fs, const char *filename);
 
-int32_t rs_write(struct FileSystem *fs, const char *filename, const char *content, uintptr_t size);
+int32_t rs_write(struct FileSystem *fs,
+                 const char *filename,
+                 const char *content,
+                 uintptr_t size,
+                 uintptr_t offset);
 
 int32_t rs_mkdir(struct FileSystem *fs, const char *filename);
 

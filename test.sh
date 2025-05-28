@@ -13,5 +13,11 @@ cat mp/LOL/lul
 
 rm -r mp/LOL
 
+cp small.html mp/small.html
+cp index.html mp/index.html
+
 ls -l mp
 tree mp
+
+rm mp/small.html
+rm mp/index.html

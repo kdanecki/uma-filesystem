@@ -296,18 +296,142 @@ impl<'a> FileSystem<'a> {
         self.create_file_inter(path, &data, 2)
     }
 
-    pub fn write_file(&mut self, path: &CStr, content: &[u8]) -> i32 {
+    fn write_to_indirect_block(
+        &mut self,
+        ind_block_num: u32,
+        content: &[u8],
+        offset: usize,
+    ) -> Result<usize, &str> {
+        let bs = self.sb.block_size as usize;
+        let total = content.len();
+        let mut block_num = offset / bs;
+        let mut content = content;
+
+        let start = offset % bs;
+        let batch = if content.len() < bs - start {
+            content.len()
+        } else {
+            bs - start
+        };
+        let indirect_data = self.get_data_block(ind_block_num);
+        println!("{ind_block_num}");
+        println!("{indirect_data:?}");
+        let b = u32::from_le_bytes(
+            indirect_data[block_num * 4..block_num * 4 + 4]
+                .try_into()
+                .unwrap(),
+        );
+        if b == 0 {
+            return Err("attemted to write to block 0");
+        }
+        self.get_data_block_mut(b)[start..start + batch].copy_from_slice(&content[..batch]);
+        content = &content[batch..];
+        block_num += 1;
+        while content.len() > 0 {
+            if block_num < bs / 4 {
+                let batch = if content.len() < bs {
+                    content.len() as usize
+                } else {
+                    bs
+                };
+                let indirect_data = self.get_data_block(ind_block_num);
+                let b = u32::from_le_bytes(
+                    indirect_data[block_num * 4..block_num * 4 + 4]
+                        .try_into()
+                        .unwrap(),
+                );
+                if b == 0 {
+                    return Err("attemted to write to block 0");
+                }
+                self.get_data_block_mut(b)[..batch].copy_from_slice(&content[..batch]);
+                content = &content[batch..];
+                block_num += 1;
+            } else {
+                return Ok(total - content.len());
+            }
+        }
+        Ok(total)
+    }
+
+    fn write_file_data(
+        &mut self,
+        node: &inode_t,
+        content: &[u8],
+        offset: usize,
+    ) -> Result<(), &str> {
+        let mut len = content.len() as isize;
+        let bs = self.sb.block_size as usize;
+        let mut content = content;
+        if offset >= (self.sb.block_size * 12) as usize {
+            let num = self
+                .write_to_indirect_block(node.sin_inblock, content, offset - bs * 12)
+                .unwrap();
+            // .expect("attemted to write to block 0");
+            if num != len as usize {
+                panic!("doubly indirect");
+            }
+            return Ok(());
+        }
+        let mut block_num = offset / bs;
+
+        let start = offset % bs;
+        let batch = if (len as usize) < bs - start {
+            len as usize
+        } else {
+            bs - start
+        };
+        self.get_data_block_mut(node.direct_blocks[block_num])[start..start + batch]
+            .copy_from_slice(&content[..batch]);
+        content = &content[batch..];
+        len -= batch as isize;
+        block_num += 1;
+        while len > 0 {
+            if block_num < 12 {
+                let batch = if (len as usize) < bs {
+                    len as usize
+                } else {
+                    bs
+                };
+                self.get_data_block_mut(node.direct_blocks[block_num])[..batch]
+                    .copy_from_slice(&content[..batch]);
+                content = &content[batch..];
+                len -= batch as isize;
+                block_num += 1;
+            } else {
+                let num = self
+                    .write_to_indirect_block(node.sin_inblock, content, 0)
+                    .unwrap();
+                // .expect("attemted to write to block 0");
+                if num != len as usize {
+                    panic!("doubly indirect");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn write_file(&mut self, path: &CStr, content: &[u8], offset: usize) -> i32 {
+        println!("write {content:?} to offset {offset}");
         if let Some((mut node, id)) = self.find_file_mut(path.to_str().unwrap()) {
+            let len = content.len();
+            let size = self.calculate_size(&node);
             println!("len {}", content.len());
-            if self.truncate(path, content.len()).is_err() {
-                return -1;
+            if size < len + offset {
+                if self.truncate(path, len + offset).is_err() {
+                    return -1;
+                }
+                println!("TRUNCATED");
             }
             let mut node = self.get_inode_by_id(id);
+            if node.size < (len + offset) as u32 {
+                node.size = (len + offset) as u32;
+                self.save_inode(id, node);
+            }
             println!("{:?}", node.direct_blocks);
-            self.get_data_block_mut(node.direct_blocks[0])[0..content.len()]
-                .copy_from_slice(content);
-            node.size = content.len() as u32;
-            self.save_inode(id, node);
+            if self.write_file_data(&node, content, offset).is_err() {
+                return 0;
+            }
             return content.len() as i32;
         } else {
             println!("file not found");
@@ -362,13 +486,13 @@ impl<'a> FileSystem<'a> {
 
         let mut i = 0usize;
         let inode_num = self.inode_bitmap.get_first_free();
-        let block_num = self.blocks_bitmap.get_first_free();
 
         //create dentry
         // if node.direct_blocks[0] == 0 {
         //     node.direct_blocks[0] = self.blocks_bitmap.get_first_free() as u32;
         //     println!("occupy block");
         // }
+        println!("block used{}", node.direct_blocks[0]);
         let data = self.get_data_block_mut(node.direct_blocks[0]);
         let data = FileSystem::find_space_for_dentry(data, name.len() + 8).unwrap();
 
@@ -378,23 +502,29 @@ impl<'a> FileSystem<'a> {
         data[8..8 + name_len].copy_from_slice(name);
 
         //create inode
-        self.create_inode(inode_num, block_num, content.len() as u32, type_perm);
+        if content.len() > 0 || type_perm == 2 {
+            let block_num = self.blocks_bitmap.get_first_free();
+            self.create_inode(inode_num, block_num, content.len() as u32, type_perm);
 
-        //create data block
-        self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content);
-        if type_perm == 2 {
-            let mut data = [0u8; 22];
-            data[..4].copy_from_slice(&(inode_num as u32).to_le_bytes());
-            data[4..8].copy_from_slice(&1u32.to_le_bytes());
-            data[8..9].copy_from_slice(".".as_bytes());
+            //create data block
+            self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content);
+            if type_perm == 2 {
+                println!("{:?} created block {}", path, block_num);
+                let mut data = [0u8; 22];
+                data[..4].copy_from_slice(&(inode_num as u32).to_le_bytes());
+                data[4..8].copy_from_slice(&1u32.to_le_bytes());
+                data[8..9].copy_from_slice(".".as_bytes());
 
-            let parent_id = self
-                .search_directory_get_id(&node, ".")
-                .expect("parent does not have \".\"");
-            data[12..16].copy_from_slice(&(parent_id as u32).to_le_bytes());
-            data[16..20].copy_from_slice(&2u32.to_le_bytes());
-            data[20..22].copy_from_slice("..".as_bytes());
-            self.get_data_block_mut(block_num as u32)[0..data.len()].copy_from_slice(&data);
+                let parent_id = self
+                    .search_directory_get_id(&node, ".")
+                    .expect("parent does not have \".\"");
+                data[12..16].copy_from_slice(&(parent_id as u32).to_le_bytes());
+                data[16..20].copy_from_slice(&2u32.to_le_bytes());
+                data[20..22].copy_from_slice("..".as_bytes());
+                self.get_data_block_mut(block_num as u32)[0..data.len()].copy_from_slice(&data);
+            }
+        } else {
+            self.create_inode(inode_num, 0, content.len() as u32, type_perm);
         }
 
         Ok(())
@@ -449,11 +579,24 @@ impl<'a> FileSystem<'a> {
                     size -= self.sb.block_size as usize
                 } else {
                     if size == 0 {
+                        println!("{:?}", node);
                         panic!("file has more blocks than it should");
                     }
                     data.extend_from_slice(&self.get_data_block(i)[..size]);
                     size = 0;
                 }
+            }
+        }
+        if node.sin_inblock != 0 {
+            let mut indirect = self.get_data_block(node.sin_inblock);
+            while indirect.len() > 0 {
+                let b = u32::from_le_bytes(indirect[..4].try_into().unwrap());
+                if b != 0 {
+                    data.extend_from_slice(self.get_data_block(b));
+                } else {
+                    break;
+                }
+                indirect = &indirect[4..];
             }
         }
         data
@@ -493,7 +636,9 @@ impl<'a> FileSystem<'a> {
         println!("boo: {:?}", self.read_file(c"/boo").unwrap());
         println!("XD: {:?}", self.read_file(c"/XD").unwrap());
         println!("xd: {:?}", self.read_file(c"/XD/xd").unwrap());
-        self.write_file(c"/XD/xd", &[5, 4, 3, 2, 1]);
+        self.write_file(c"/XD/xd", "LOL".as_bytes(), 0);
+        self.write_file(c"/XD/xd", "XD".as_bytes(), 3);
+        self.write_file(c"/XD/xd", "FOO".as_bytes(), 0);
         println!("xd: {:?}", self.read_file(c"/XD/xd").unwrap());
         println!("{:?}", self.create_file(c"/XD/xd", &[0u8]));
         println!("{:?}", self.create_directory(c"/XD/LUL"));
@@ -575,18 +720,43 @@ impl<'a> FileSystem<'a> {
         let mut size = 0;
         for i in node.direct_blocks {
             if i != 0 {
-                size += self.sb.block_size;
+                size += self.sb.block_size as usize;
             } else {
                 break;
             }
         }
-        0
+        size
+    }
+
+    fn truncate_indirect_block(&mut self, block_num: u32, mut size: isize) -> isize {
+        let mut i = 0;
+        while self.get_data_block(block_num).len() - i > 0 {
+            let b =
+                u32::from_le_bytes(self.get_data_block(block_num)[i..i + 4].try_into().unwrap());
+            if size > 0 {
+                if b == 0 {
+                    let free = self.blocks_bitmap.get_first_free() as u32;
+                    self.get_data_block_mut(block_num)[i..i + 4]
+                        .copy_from_slice(&free.to_le_bytes());
+                }
+                size -= self.sb.block_size as isize;
+            } else {
+                if b != 0 {
+                    self.blocks_bitmap.free(b as usize);
+                    self.get_data_block_mut(block_num)[i..i + 4]
+                        .copy_from_slice(&0u32.to_le_bytes());
+                }
+            }
+            i += 4;
+        }
+        size
     }
 
     pub fn truncate(&mut self, path: &CStr, size: usize) -> Result<(), &str> {
         let path = path.to_str().expect("path should be UTF-8");
         let mut size = size as isize;
         if let Some((mut node, id)) = self.find_file_mut(path) {
+            node.size = size as u32;
             for i in node.direct_blocks.iter_mut() {
                 println!("{size} {}", *i);
                 if size > 0 {
@@ -601,6 +771,22 @@ impl<'a> FileSystem<'a> {
                         *i = 0;
                     }
                 }
+            }
+            if size > 0 {
+                // create indirect block
+                if node.sin_inblock == 0 {
+                    node.sin_inblock = self.blocks_bitmap.get_first_free() as u32;
+                }
+                size = self.truncate_indirect_block(node.sin_inblock, size);
+                println!("{:?}", self.get_data_block(node.sin_inblock));
+            } else {
+                // delete indirect block
+                self.truncate_indirect_block(node.sin_inblock, size);
+                self.blocks_bitmap.free(node.sin_inblock as usize);
+                node.sin_inblock = 0;
+            }
+            if size > 0 {
+                panic!("doubly indirect block");
             }
             println!("{node:?}");
             self.save_inode(id, node);

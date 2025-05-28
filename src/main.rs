@@ -32,7 +32,7 @@ fn main() {
     println!("{:?}", f.get_attr(c"/."));
 
     f.create_file(c"/blabla", &[]);
-    f.write_file(c"/blabla", &[1u8, 234, 65]);
+    f.write_file(c"/blabla", &[1u8, 234, 65], 0);
     println!("{:?}", f.read_file(c"/blabla"));
 
     // f.rename(c"/blabla", c"/gogo").unwrap();

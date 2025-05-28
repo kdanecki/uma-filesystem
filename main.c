@@ -68,7 +68,7 @@ int c_create(const char* path, mode_t mode, struct fuse_file_info* fi)
 int c_write(const char* path, const char* buf, size_t size, off_t off, struct fuse_file_info* fi)
 {
     struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
-    int ret = rs_write(fs, path, buf, size);
+    int ret = rs_write(fs, path, buf, size, off);
     if (ret == -1)
         return -ENOMEM;
     return ret ? ret : -ENODATA;
