@@ -164,6 +164,18 @@ pub unsafe extern "C" fn rs_rename(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn rs_chmod(
+    fs: *mut FileSystem,
+    filename: *const ::std::os::raw::c_char,
+    mode: u32,
+) -> i32 {
+    if (*fs).chmod(CStr::from_ptr(filename), mode).is_ok() {
+        return 0;
+    }
+    return -1;
+}
+
+#[no_mangle]
 pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
     let block_size = 1024;
     let block_num = 16348;

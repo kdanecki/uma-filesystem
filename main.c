@@ -15,7 +15,7 @@ int c_getattr(const char* path, struct stat* stbuf)
     int res = rs_getattr(fs, path, &node);
     if (res == 0)
     {
-        stbuf->st_mode = node.type_perm == 2 ? S_IFDIR | 0755 : S_IFREG | 0666;
+        stbuf->st_mode = node.type_perm;
     		stbuf->st_nlink = node.hard_links;
     		stbuf->st_uid = node.uid;
     		stbuf->st_gid = node.gid;
@@ -119,6 +119,13 @@ int c_rmdir(const char* path)
     return res ? -ENOENT : 0;
 }
 
+int c_chmod(const char* path, mode_t mode)
+{
+    struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
+    int res = rs_chmod(fs, path, mode);
+    return res ? -ENOENT : 0;
+}
+
 static struct fuse_operations my_oper = {
     .getattr = c_getattr,
     .open = c_open,
@@ -133,6 +140,7 @@ static struct fuse_operations my_oper = {
     .unlink = c_unlink,
     .rmdir = c_rmdir,
     .rename = c_rename,
+    .chmod = c_chmod,
 };
 
 int main(int argc, char *argv[])

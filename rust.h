@@ -62,6 +62,8 @@ int32_t rs_truncate(struct FileSystem *fs, const char *filename, uintptr_t size)
 
 int32_t rs_rename(struct FileSystem *fs, const char *from, const char *to);
 
+int32_t rs_chmod(struct FileSystem *fs, const char *filename, uint32_t mode);
+
 struct FileSystem *rs_init(void);
 
 extern void *get_block(struct superblock_t *sb, block_p id);

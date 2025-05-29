@@ -84,7 +84,7 @@ impl<'a> FileSystem<'a> {
         //self.inode_bitmap.take(1);
         //self.blocks_bitmap.take(1);
         self.save();
-        self.create_inode(1, 1, 0, 2);
+        self.create_inode(1, 1, 0, 0x4000 | 0o755);
 
         // TODO fix this
         let inode_num = 1;
@@ -110,7 +110,7 @@ impl<'a> FileSystem<'a> {
             } else {
                 self.find_file(&from[..offset])
             } {
-                if dir_from.type_perm == 2 {
+                if dir_from.is_directory() {
                     if let Some(id) = self.search_directory_get_id(&dir_from, &from[offset + 1..]) {
                         if let Some(_) = self.find_file(to) {
                             return Err("file already exists");
@@ -157,7 +157,7 @@ impl<'a> FileSystem<'a> {
     }
 
     pub fn create_file(&mut self, path: &CStr, content: &[u8]) -> Result<(), &str> {
-        return self.create_file_inter(path, content, 1);
+        return self.create_file_inter(path, content, 0x8000 | 0o666);
     }
 
     pub fn unlink_file(&mut self, path: &CStr) -> Result<(), &str> {
@@ -169,7 +169,7 @@ impl<'a> FileSystem<'a> {
             } else {
                 self.find_file(&path[..offset])
             } {
-                if node.type_perm == 2 {
+                if node.is_directory() {
                     if let Some(id) = self.search_directory_get_id(&node, &path[offset + 1..]) {
                         let file = self.get_inode_by_id(id);
                         self.blocks_bitmap.free(file.direct_blocks[0] as usize);
@@ -194,10 +194,10 @@ impl<'a> FileSystem<'a> {
             } else {
                 self.find_file(&path[..offset])
             } {
-                if node.type_perm == 2 {
+                if node.is_directory() {
                     if let Some(id) = self.search_directory_get_id(&node, &path[offset + 1..]) {
                         let file = self.get_inode_by_id(id);
-                        if file.type_perm == 2 {
+                        if file.is_directory() {
                             let mut data = self.get_data_block(file.direct_blocks[0]);
                             while let Some(d) = Dentry::from(&data[..]) {
                                 println!("{:?}", d);
@@ -237,7 +237,7 @@ impl<'a> FileSystem<'a> {
             let filename = &path[0..offset];
             // println!("{:?}", filename.as_bytes());
             if let Some(sub_node) = self.search_directory(node, filename) {
-                if sub_node.type_perm == 2 {
+                if sub_node.is_directory() {
                     // println!(
                     //     "subnode foid off {}searching {}",
                     //     offset,
@@ -271,7 +271,7 @@ impl<'a> FileSystem<'a> {
             let filename = &path[0..offset];
             // println!("{:?}", filename.as_bytes());
             if let Some(sub_node) = self.search_directory(node, filename) {
-                if sub_node.type_perm == 2 {
+                if sub_node.is_directory() {
                     // println!(
                     //     "subnode foid off {}searching {}",
                     //     offset,
@@ -293,7 +293,7 @@ impl<'a> FileSystem<'a> {
 
     pub fn create_directory(&mut self, path: &CStr) -> Result<(), &str> {
         let data = vec![0; self.sb.block_size as usize];
-        self.create_file_inter(path, &data, 2)
+        self.create_file_inter(path, &data, 0x4000 | 0o755)
     }
 
     fn write_to_indirect_block(
@@ -502,13 +502,13 @@ impl<'a> FileSystem<'a> {
         data[8..8 + name_len].copy_from_slice(name);
 
         //create inode
-        if content.len() > 0 || type_perm == 2 {
+        if content.len() > 0 || type_perm & 0x4000 != 0 {
             let block_num = self.blocks_bitmap.get_first_free();
             self.create_inode(inode_num, block_num, content.len() as u32, type_perm);
 
             //create data block
             self.get_data_block_mut(block_num as u32)[0..content.len()].copy_from_slice(content);
-            if type_perm == 2 {
+            if type_perm & 0x4000 != 0 {
                 println!("{:?} created block {}", path, block_num);
                 let mut data = [0u8; 22];
                 data[..4].copy_from_slice(&(inode_num as u32).to_le_bytes());
@@ -557,7 +557,7 @@ impl<'a> FileSystem<'a> {
     pub fn get_files_in_dir(&self, path: &CStr) -> Vec<String> {
         let mut files = vec![];
         if let Some(node) = self.find_file(path.to_str().unwrap()) {
-            if node.type_perm == 2 {
+            if node.is_directory() {
                 let d = self.get_dir_data(&node);
                 let mut data = &d[..];
                 while let Some(dentry) = Dentry::from(data) {
@@ -794,6 +794,17 @@ impl<'a> FileSystem<'a> {
         }
 
         Err("failed")
+    }
+
+    pub fn chmod(&mut self, path: &CStr, mode: u32) -> Result<(), &str> {
+        if let Some((mut node, id)) =
+            self.find_file_mut(path.to_str().expect("path should be UTF-8"))
+        {
+            node.type_perm = (mode | node.type_perm as u32 & 0xF000) as u16;
+            self.save_inode(id, node);
+            return Ok(());
+        }
+        Err("file not found")
     }
 
     fn get_inode_by_id(&self, id: inode_p) -> inode_t {
@@ -1110,6 +1121,12 @@ pub struct inode_t {
     pub dob_inblock: block_p,
     pub tri_inblock: block_p,
     pub unused: [::std::os::raw::c_char; 24usize],
+}
+
+impl inode_t {
+    pub fn is_directory(&self) -> bool {
+        self.type_perm & 0x4000 != 0
+    }
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
