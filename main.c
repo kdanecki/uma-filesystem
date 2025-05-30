@@ -40,6 +40,8 @@ int c_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_f
 {
     struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
     int res = rs_read(fs, path, buf, size, offset);
+    if (res == -1)
+        return -EFAULT;
     return res ? res : -ENOENT;
 }
 
@@ -68,7 +70,7 @@ int c_write(const char* path, const char* buf, size_t size, off_t off, struct fu
     struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
     int ret = rs_write(fs, path, buf, size, off);
     if (ret == -1)
-        return -ENOMEM;
+        return -EFBIG;
     return ret ? ret : -ENODATA;
 }
 

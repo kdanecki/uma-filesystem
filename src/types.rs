@@ -113,8 +113,12 @@ impl<'a> FileSystem<'a> {
             } {
                 if dir_from.is_directory() {
                     if let Some(id) = self.search_directory_get_id(&dir_from, &from[offset + 1..]) {
-                        if let Some(_) = self.find_file(to) {
-                            return Err("file already exists");
+                        if let Some(to_remove) = self.find_file(to) {
+                            // TODO check if directory is empty
+                            if to_remove.is_directory() {
+                                return Err("file already exists");
+                            }
+                            self.unlink_file(to)?;
                         }
                         if let Some(to_offset) = to.rfind('/') {
                             if let Some((dir_to, node_id)) = if to_offset == 0 {
@@ -138,7 +142,6 @@ impl<'a> FileSystem<'a> {
         } else {
             return Err("bad filename format");
         }
-        Err("file not found")
     }
 
     pub fn save(&mut self) {
@@ -154,9 +157,9 @@ impl<'a> FileSystem<'a> {
         return self.create_file_inter(path, content, mode as u16);
     }
 
-    pub fn unlink_file(&mut self, path: &CStr) -> Result<(), &str> {
+    pub fn unlink_file(&mut self, path: &str) -> Result<(), &'static str> {
         // TODO check nlink
-        let path = path.to_str().unwrap();
+        // let path = path.to_str().unwrap();
         if let Some(offset) = path.rfind('/') {
             if let Some(node) = if offset == 0 {
                 Some(self.get_inode_by_id(1))
@@ -430,20 +433,20 @@ impl<'a> FileSystem<'a> {
             }
             return content.len() as i32;
         } else {
-            println!("file not found");
+            println!("NOT FOUND FILE FOR WRITE");
             return 0;
         }
     }
 
-    pub fn read_file(&self, path: &CStr) -> Option<Vec<u8>> {
+    pub fn read_file(&self, path: &CStr) -> Result<Vec<u8>, &str> {
         if let Some(node) = self.find_file(path.to_str().unwrap()) {
             // println!(
             //     "reading from node {:#?} block {}",
             //     node, node.direct_blocks[0]
             // );
-            return Some(self.get_file_data(&node));
+            return self.get_file_data(&node);
         }
-        None
+        Ok(vec![])
     }
 
     fn create_file_inter(
@@ -485,7 +488,7 @@ impl<'a> FileSystem<'a> {
         let name = filename.to_bytes();
 
         let mut i = 0usize;
-        let inode_num = self.inode_bitmap.get_first_free();
+        let inode_num = self.inode_bitmap.get_first_free().ok_or("OUT OF MEMORY")?;
 
         //create dentry
         // if node.direct_blocks[0] == 0 {
@@ -497,7 +500,7 @@ impl<'a> FileSystem<'a> {
 
         //create inode
         if content.len() > 0 || type_perm & 0x4000 != 0 {
-            let block_num = self.blocks_bitmap.get_first_free();
+            let block_num = self.blocks_bitmap.get_first_free().ok_or("OUT OF MEMORY")?;
             self.create_inode(inode_num, block_num, content.len() as u32, type_perm);
 
             //create data block
@@ -526,13 +529,17 @@ impl<'a> FileSystem<'a> {
 
     fn create_dentry(&mut self, node: &inode_t, id: u32, inode_num: u32, name: &[u8]) {
         let data = self.get_dir_data(&node);
-        let node = *node;
+        let mut node = *node;
         let offset = if let Some(offset) = FileSystem::find_space_for_dentry(&data, name.len() + 8)
         {
             offset
         } else {
             let size = self.calculate_size(&node);
+            let mut v = vec![];
+            v.extend_from_slice(name);
+            println!("ADD NEW BLOCK TO DIR WHEN {:?}", String::from_utf8(v));
             self.truncate_inter(node, id, (size + 1) as isize).unwrap();
+            node = self.get_inode_by_id(id);
             size
         };
 
@@ -585,7 +592,7 @@ impl<'a> FileSystem<'a> {
         return files;
     }
 
-    fn get_file_data(&self, node: &inode_t) -> Vec<u8> {
+    fn get_file_data(&self, node: &inode_t) -> Result<Vec<u8>, &'static str> {
         let mut data = vec![];
         let mut size = node.size as usize;
         let mut blocks = 0;
@@ -598,7 +605,7 @@ impl<'a> FileSystem<'a> {
                 } else {
                     if size == 0 {
                         println!("{:?}", node);
-                        panic!("file has more blocks than it should");
+                        return Err("file has more blocks than it should");
                     }
                     data.extend_from_slice(&self.get_data_block(i)[..size]);
                     blocks += 1;
@@ -618,7 +625,7 @@ impl<'a> FileSystem<'a> {
                     } else {
                         if size == 0 {
                             println!("{:?}", node);
-                            panic!("file has more blocks than it should");
+                            return Err("file has more blocks than it should");
                         }
                         data.extend_from_slice(&self.get_data_block(b)[..size]);
                         blocks += 1;
@@ -631,7 +638,7 @@ impl<'a> FileSystem<'a> {
             }
         }
         println!("read from {blocks} BLOCKS");
-        data
+        Ok(data)
     }
 
     fn get_dir_data(&self, node: &inode_t) -> Vec<u8> {
@@ -703,7 +710,7 @@ impl<'a> FileSystem<'a> {
         );
         println!("xd: {:?}", self.read_file(c"/XD/LUL/cos tam").unwrap());
         println!("DELETE");
-        println!("{:?}", self.unlink_file(c"/boo"));
+        println!("{:?}", self.unlink_file("/boo"));
         println!("XD: {:?}", self.read_file(c"/XD").unwrap());
         println!("xd: {:?}", self.read_file(c"/XD/LUL/cos tam").unwrap());
         println!("del XD {:?}", self.unlink_dir(c"/XD"));
@@ -719,8 +726,8 @@ impl<'a> FileSystem<'a> {
             "{:?}",
             self.create_file(c"/g", &['M' as u8, 'O' as u8, 'L' as u8, 0], 0x8000 | 0o666)
         );
-        self.unlink_file(c"/g").expect("failed to delete");
-        self.unlink_file(c"/XD/LUL/cos tam")
+        self.unlink_file("/g").expect("failed to delete");
+        self.unlink_file("/XD/LUL/cos tam")
             .expect("failed to delete");
         println!("delete LUL {:?}", self.unlink_dir(c"/XD/LUL"));
         println!(
@@ -810,7 +817,11 @@ impl<'a> FileSystem<'a> {
         size
     }
 
-    fn truncate_indirect_block(&mut self, block_num: u32, mut size: isize) -> isize {
+    fn truncate_indirect_block(
+        &mut self,
+        block_num: u32,
+        mut size: isize,
+    ) -> Result<isize, &'static str> {
         let mut i = 0;
         // println!(
         //     "indblock {} {:?}",
@@ -822,7 +833,7 @@ impl<'a> FileSystem<'a> {
                 u32::from_le_bytes(self.get_data_block(block_num)[i..i + 4].try_into().unwrap());
             if size > 0 {
                 if b == 0 {
-                    let free = self.blocks_bitmap.get_first_free() as u32;
+                    let free = self.blocks_bitmap.get_first_free().ok_or("OUT OF MEMORY")? as u32;
                     self.get_data_block_mut(free).zero();
                     self.get_data_block_mut(block_num)[i..i + 4]
                         .copy_from_slice(&free.to_le_bytes());
@@ -837,7 +848,7 @@ impl<'a> FileSystem<'a> {
             }
             i += 4;
         }
-        size
+        Ok(size)
     }
 
     fn truncate_inter(&mut self, mut node: inode_t, id: u32, mut size: isize) -> Result<(), &str> {
@@ -846,7 +857,7 @@ impl<'a> FileSystem<'a> {
             println!("{size} {}", *i);
             if size > 0 {
                 if *i == 0 {
-                    *i = self.blocks_bitmap.get_first_free() as u32;
+                    *i = self.blocks_bitmap.get_first_free().ok_or("OUT OF MEMORY")? as u32;
                     self.get_data_block_mut(*i).zero();
                     println!("{}", *i);
                 }
@@ -862,21 +873,22 @@ impl<'a> FileSystem<'a> {
             println!("size is bigger that 0 {size}");
             // create indirect block
             if node.sin_inblock == 0 {
-                node.sin_inblock = self.blocks_bitmap.get_first_free() as u32;
+                node.sin_inblock =
+                    self.blocks_bitmap.get_first_free().ok_or("OUT OF MEMORY")? as u32;
                 self.get_data_block_mut(node.sin_inblock).zero();
             }
-            size = self.truncate_indirect_block(node.sin_inblock, size);
+            size = self.truncate_indirect_block(node.sin_inblock, size)?;
             println!("{:?}", self.get_data_block(node.sin_inblock));
         } else {
             // delete indirect block
             if node.sin_inblock != 0 {
-                self.truncate_indirect_block(node.sin_inblock, size);
+                self.truncate_indirect_block(node.sin_inblock, size)?;
                 self.blocks_bitmap.free(node.sin_inblock as usize);
                 node.sin_inblock = 0;
             }
         }
         if size > 0 {
-            panic!("doubly indirect block");
+            return Err("doubly indirect block");
         }
         println!("{node:?}");
         self.save_inode(id, node);
@@ -1012,16 +1024,16 @@ impl<'a> Bitmap<'a> {
         self.data[id / 8] &= !(1 << id % 8);
     }
 
-    pub fn get_first_free(&mut self) -> usize {
+    pub fn get_first_free(&mut self) -> Option<usize> {
         let mut i = 1;
         while i < self.size {
             if self.data[i / 8] & 1 << i % 8 == 0 {
                 self.data[i / 8] |= 1 << i % 8;
-                return i;
+                return Some(i);
             }
             i += 1;
         }
-        return 0;
+        return None;
     }
 }
 

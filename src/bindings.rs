@@ -50,7 +50,7 @@ pub unsafe extern "C" fn rs_read(
     size: usize,
     offset: usize,
 ) -> i32 {
-    if let Some(bytes) = (*fs).read_file(CStr::from_ptr(filename)) {
+    if let Ok(bytes) = (*fs).read_file(CStr::from_ptr(filename)) {
         if bytes.len() > offset {
             let size = size.min(bytes.len() - offset);
             buf.copy_from(bytes[offset..].as_ptr() as *const i8, size);
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn rs_read(
             0
         }
     } else {
-        0
+        -1
     }
 }
 
@@ -108,8 +108,7 @@ pub unsafe extern "C" fn rs_write(
     offset: usize,
 ) -> i32 {
     let content: &[u8] = slice::from_raw_parts(content as *const u8, size);
-    (*fs).write_file(CStr::from_ptr(filename), content, offset);
-    return size as i32;
+    (*fs).write_file(CStr::from_ptr(filename), content, offset)
 }
 
 #[no_mangle]
@@ -128,7 +127,10 @@ pub unsafe extern "C" fn rs_unlink(
     fs: *mut FileSystem,
     filename: *const ::std::os::raw::c_char,
 ) -> i32 {
-    if (*fs).unlink_file(CStr::from_ptr(filename)).is_ok() {
+    if (*fs)
+        .unlink_file(CStr::from_ptr(filename).to_str().unwrap())
+        .is_ok()
+    {
         return 0;
     }
     return -1;
