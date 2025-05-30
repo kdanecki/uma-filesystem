@@ -82,8 +82,12 @@ pub unsafe extern "C" fn rs_readdir(
 pub unsafe extern "C" fn rs_create(
     fs: *mut FileSystem,
     filename: *const ::std::os::raw::c_char,
+    mode: u32,
 ) -> i32 {
-    if (*fs).create_file(CStr::from_ptr(filename), &[]).is_ok() {
+    if (*fs)
+        .create_file(CStr::from_ptr(filename), &[], mode)
+        .is_ok()
+    {
         return 0;
     }
     return -1;
@@ -193,7 +197,7 @@ pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
 
     let mut f = unsafe { Box::new(FileSystem::new(&mut (*map)[..])) };
     // println!("{:?}", f);
-    f.format(1024, 16384);
-    f.dummy_data();
+    // f.format(1024, 16384);
+    // f.dummy_data();
     Box::into_raw(f)
 }

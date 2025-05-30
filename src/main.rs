@@ -31,7 +31,7 @@ fn main() {
     println!("{:?}", f.get_files_in_dir(c"/"));
     println!("{:?}", f.get_attr(c"/."));
 
-    f.create_file(c"/blabla", &[]);
+    f.create_file(c"/blabla", &[], 0x8000 | 0o666);
     f.write_file(c"/blabla", &[1u8, 234, 65], 0);
     println!("{:?}", f.read_file(c"/blabla"));
 

@@ -59,7 +59,7 @@ int c_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 int c_create(const char* path, mode_t mode, struct fuse_file_info* fi)
 {
     struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
-    if (rs_create(fs, path) == 0)
+    if (rs_create(fs, path, mode) == 0)
         return 0;
     
     return -EPERM;

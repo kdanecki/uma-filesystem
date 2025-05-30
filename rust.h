@@ -44,7 +44,7 @@ int32_t rs_read(struct FileSystem *fs, const char *filename, int8_t *buf, uintpt
 
 int32_t rs_readdir(struct FileSystem *fs, const char *filename, void *buf, fuse_fill_dir_t filler);
 
-int32_t rs_create(struct FileSystem *fs, const char *filename);
+int32_t rs_create(struct FileSystem *fs, const char *filename, uint32_t mode);
 
 int32_t rs_write(struct FileSystem *fs,
                  const char *filename,

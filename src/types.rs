@@ -156,8 +156,8 @@ impl<'a> FileSystem<'a> {
         self.find_file(path.to_str().unwrap())
     }
 
-    pub fn create_file(&mut self, path: &CStr, content: &[u8]) -> Result<(), &str> {
-        return self.create_file_inter(path, content, 0x8000 | 0o666);
+    pub fn create_file(&mut self, path: &CStr, content: &[u8], mode: u32) -> Result<(), &str> {
+        return self.create_file_inter(path, content, mode as u16);
     }
 
     pub fn unlink_file(&mut self, path: &CStr) -> Result<(), &str> {
@@ -615,14 +615,25 @@ impl<'a> FileSystem<'a> {
     pub fn dummy_data(&mut self) {
         println!(
             "create foo {:?}",
-            self.create_file(c"/foo", &['L' as u8, 'O' as u8, 'L' as u8, 0])
+            self.create_file(
+                c"/foo",
+                &['L' as u8, 'O' as u8, 'L' as u8, 0],
+                0x8000 | 0o666
+            )
         );
         println!(
             "create boo {:?}",
-            self.create_file(c"/boo", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+            self.create_file(
+                c"/boo",
+                &['M' as u8, 'O' as u8, 'L' as u8, 0],
+                0x8000 | 0o666
+            )
         );
         println!("{:?}", self.create_directory(c"/XD"));
-        println!("{:?}", self.create_file(c"/XD/xd", &[1u8, 2, 3, 4, 5]));
+        println!(
+            "{:?}",
+            self.create_file(c"/XD/xd", &[1u8, 2, 3, 4, 5], 0x8000 | 0o666)
+        );
         // self.create_file(
         //     c"goo",
         //     &[1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
@@ -640,9 +651,12 @@ impl<'a> FileSystem<'a> {
         self.write_file(c"/XD/xd", "XD".as_bytes(), 3);
         self.write_file(c"/XD/xd", "FOO".as_bytes(), 0);
         println!("xd: {:?}", self.read_file(c"/XD/xd").unwrap());
-        println!("{:?}", self.create_file(c"/XD/xd", &[0u8]));
+        println!("{:?}", self.create_file(c"/XD/xd", &[0u8], 0x8000 | 0o666));
         println!("{:?}", self.create_directory(c"/XD/LUL"));
-        println!("{:?}", self.create_file(c"/XD/LUL/cos tam", &[5u8, 5, 5]));
+        println!(
+            "{:?}",
+            self.create_file(c"/XD/LUL/cos tam", &[5u8, 5, 5], 0x8000 | 0o666)
+        );
         println!("xd: {:?}", self.read_file(c"/XD/LUL/cos tam").unwrap());
         println!("DELETE");
         println!("{:?}", self.unlink_file(c"/boo"));
@@ -651,11 +665,15 @@ impl<'a> FileSystem<'a> {
         println!("del XD {:?}", self.unlink_dir(c"/XD"));
         println!(
             "{:?}",
-            self.create_file(c"/asdfghjkl", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+            self.create_file(
+                c"/asdfghjkl",
+                &['M' as u8, 'O' as u8, 'L' as u8, 0],
+                0x8000 | 0o666
+            )
         );
         println!(
             "{:?}",
-            self.create_file(c"/g", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+            self.create_file(c"/g", &['M' as u8, 'O' as u8, 'L' as u8, 0], 0x8000 | 0o666)
         );
         self.unlink_file(c"/g").expect("failed to delete");
         self.unlink_file(c"/XD/LUL/cos tam")
@@ -663,7 +681,11 @@ impl<'a> FileSystem<'a> {
         println!("delete LUL {:?}", self.unlink_dir(c"/XD/LUL"));
         println!(
             "{:?}",
-            self.create_file(c"/qwertyui", &['M' as u8, 'O' as u8, 'L' as u8, 0])
+            self.create_file(
+                c"/qwertyui",
+                &['M' as u8, 'O' as u8, 'L' as u8, 0],
+                0x8000 | 0o666
+            )
         );
     }
 
