@@ -40,7 +40,11 @@ int32_t rs_getattr(struct FileSystem *fs, const char *filename, struct inode_t *
 
 int32_t rs_open(struct FileSystem *fs, const char *filename);
 
-int32_t rs_read(struct FileSystem *fs, const char *filename, int8_t *buf, uintptr_t size);
+int32_t rs_read(struct FileSystem *fs,
+                const char *filename,
+                int8_t *buf,
+                uintptr_t size,
+                uintptr_t offset);
 
 int32_t rs_readdir(struct FileSystem *fs, const char *filename, void *buf, fuse_fill_dir_t filler);
 

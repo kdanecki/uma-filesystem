@@ -38,10 +38,8 @@ int c_open(const char* path, struct fuse_file_info* fi)
 
 int c_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_file_info* fi)
 {
-    if (offset != 0)
-        return 0;
     struct FileSystem *fs = (struct FileSystem*) fuse_get_context()->private_data;
-    int res = rs_read(fs, path, buf, size);
+    int res = rs_read(fs, path, buf, size, offset);
     return res ? res : -ENOENT;
 }
 
@@ -126,6 +124,11 @@ int c_chmod(const char* path, mode_t mode)
     return res ? -ENOENT : 0;
 }
 
+int c_release(const char * path, struct fuse_file_info* fi)
+{
+    return 0;
+}
+
 static struct fuse_operations my_oper = {
     .getattr = c_getattr,
     .open = c_open,
@@ -141,13 +144,14 @@ static struct fuse_operations my_oper = {
     .rmdir = c_rmdir,
     .rename = c_rename,
     .chmod = c_chmod,
+    .release = c_release,
 };
 
 int main(int argc, char *argv[])
 {
     FileSystem* fs = rs_init();
-    char buf[1024];
-    printf("%d\n",rs_read(fs, "foo", buf, 1024));
-    printf("%s", buf);
+    // char buf[1024];
+    //printf("%d\n",rs_read(fs, "foo", buf, 1024));
+    //printf("%s", buf);
     return fuse_main(argc, argv, &my_oper, fs);
 }

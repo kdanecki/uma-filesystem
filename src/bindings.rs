@@ -48,11 +48,16 @@ pub unsafe extern "C" fn rs_read(
     filename: *const ::std::os::raw::c_char,
     buf: *mut i8,
     size: usize,
+    offset: usize,
 ) -> i32 {
     if let Some(bytes) = (*fs).read_file(CStr::from_ptr(filename)) {
-        let size = size.min(bytes.len());
-        buf.copy_from(bytes.as_ptr() as *const i8, size);
-        size as i32
+        if bytes.len() > offset {
+            let size = size.min(bytes.len() - offset);
+            buf.copy_from(bytes[offset..].as_ptr() as *const i8, size);
+            size as i32
+        } else {
+            0
+        }
     } else {
         0
     }
@@ -197,7 +202,7 @@ pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
 
     let mut f = unsafe { Box::new(FileSystem::new(&mut (*map)[..])) };
     // println!("{:?}", f);
-    // f.format(1024, 16384);
+    f.format(1024, 16384);
     // f.dummy_data();
     Box::into_raw(f)
 }
