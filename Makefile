@@ -11,5 +11,4 @@ umount:
 	fusermount -u mp
 
 prod:
-	export LD_LIBRARY_PATH=./target/debug
-	./a.out mp
+	export LD_LIBRARY_PATH=./target/debug;	./a.out mp
