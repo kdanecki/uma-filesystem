@@ -153,12 +153,12 @@ static struct fuse_operations my_oper = {
 
 void print_version()
 {
-    printf("a.out 0.1\n");
+    printf("oxidizedFS 0.1\n");
 }
 
 void print_usage()
 {
-    printf("Syntax: a.out [OPTIONS] [disk image name] [COMMAND]\n\n"
+    printf("Syntax: oxidizedFS [OPTIONS] [disk image name] [COMMAND]\n\n"
            "Options:\n"
            "  -v\t\tshow version and quit\n"
            "  -h\t\tshow this help message and quit\n"
