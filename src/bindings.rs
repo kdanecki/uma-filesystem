@@ -223,14 +223,14 @@ pub unsafe extern "C" fn rs_init_and_format<'a>(
     let file = Box::into_raw(Box::new(file));
     let mut map = Box::new(unsafe { MmapMut::map_mut(&(*file)).expect("failed mmap") });
 
-    let sb_data: [u8; 28] = map[0..28].try_into().unwrap();
+    let sb_data: [u8; 20] = map[0..20].try_into().unwrap();
     let mut sb: superblock_t = zerocopy::transmute!(sb_data);
     sb.header = [0x58, 0x44, 0x20, 0x20, 0x20, 0x20, 0x58, 0x44];
     sb.block_size = block_size as u32;
     sb.blocks_num = block_num as u32;
     sb.inodes_num = inode_num;
-    let d: [u8; 28] = zerocopy::transmute!(sb);
-    map[..28].copy_from_slice(&d);
+    let d: [u8; 20] = zerocopy::transmute!(sb);
+    map[..20].copy_from_slice(&d);
 
     let map = Box::into_raw(map);
 

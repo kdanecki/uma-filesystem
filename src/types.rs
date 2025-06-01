@@ -17,7 +17,7 @@ pub struct FileSystem<'a> {
 
 impl<'a> FileSystem<'a> {
     pub fn new(data: &'a mut [u8]) -> Self {
-        let sb_data: [u8; 28] = data[0..28].try_into().unwrap();
+        let sb_data: [u8; 20] = data[0..20].try_into().unwrap();
         let sb: superblock_t = zerocopy::transmute!(sb_data);
 
         let inode_bitmap_id = 1;
@@ -126,8 +126,8 @@ impl<'a> FileSystem<'a> {
     }
 
     pub fn save(&mut self) {
-        let d: [u8; 28] = zerocopy::transmute!(self.sb);
-        self.data[..28].copy_from_slice(&d);
+        let d: [u8; 20] = zerocopy::transmute!(self.sb);
+        self.data[..20].copy_from_slice(&d);
     }
 
     pub fn get_attr(&self, path: &CStr) -> Option<inode_t> {
@@ -1263,8 +1263,6 @@ pub struct superblock_t {
     pub inodes_num: ::std::os::raw::c_uint,
     pub blocks_num: ::std::os::raw::c_uint,
     pub block_size: ::std::os::raw::c_uint,
-    pub free_blocks: ::std::os::raw::c_uint,
-    pub free_inodes: ::std::os::raw::c_uint,
 }
 
 #[allow(non_camel_case_types)]
