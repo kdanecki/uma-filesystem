@@ -61,7 +61,10 @@ impl<'a> FileSystem<'a> {
         let (data, inodes_data) = data.split_at_mut((inodes_id * sb.block_size) as usize);
         let (data, inodes_bitmap_data) = data.split_at_mut(sb.block_size as usize);
         let inode_bitmap = Bitmap::new(inodes_bitmap_data, sb.inodes_num as usize);
-        let blocks_bitmap = Bitmap::new(blocks_bitmap_data, data_blocks as usize);
+        let blocks_bitmap = Bitmap::new(
+            blocks_bitmap_data,
+            (sb.blocks_num - first_block_id) as usize,
+        );
         println!(
             "{inodes_id} {blocks_bitmap_id} {first_block_id} {}",
             sb.blocks_num - first_block_id
