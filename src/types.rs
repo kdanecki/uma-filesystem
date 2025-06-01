@@ -57,10 +57,10 @@ impl<'a> FileSystem<'a> {
             blocks_bitmap_data,
             (sb.blocks_num - first_block_id) as usize,
         );
-        println!(
-            "{inodes_id} {blocks_bitmap_id} {first_block_id} {}",
-            sb.blocks_num - first_block_id
-        );
+        // println!(
+        //     "{inodes_id} {blocks_bitmap_id} {first_block_id} {}",
+        //     sb.blocks_num - first_block_id
+        // );
 
         Self {
             sb,
