@@ -10,14 +10,14 @@ cat mp/foo
 cat mp/XD/xd
 
 mkdir mp/LOL
-echo "bvibsfjcrsnw" > mp/LOL/lul
-echo "abc" > mp/LOL/lul
-echo "def" >> mp/LOL/lul
-cat mp/LOL/lul
+echo "blablablabla" > mp/LOL/lol
+echo "abc" > mp/LOL/lol
+echo "def" >> mp/LOL/lol
+cat mp/LOL/lol
 
 
-cp small.html mp/small.html
-cp index.html mp/index.html
+cp oxidizedFS mp/oxidizedFS
+cp target/debug/libfs_rust.so mp/libfs_rust.so
 
 ls -l mp
 tree mp
@@ -25,5 +25,5 @@ tree mp
 rm mp/foo
 rm -r mp/XD
 rm -r mp/LOL
-rm mp/small.html
-rm mp/index.html
+rm mp/oxidizedFS
+rm mp/libfs_rust.so
