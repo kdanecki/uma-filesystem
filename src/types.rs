@@ -31,9 +31,9 @@ impl<'a> FileSystem<'a> {
     pub fn new(data: &'a mut [u8]) -> Self {
         let sb_data: [u8; 28] = data[0..28].try_into().unwrap();
         let mut sb: superblock_t = zerocopy::transmute!(sb_data);
-        sb.block_size = 1024;
-        sb.blocks_num = 16384;
-        sb.inodes_num = 1024 * 8;
+        // sb.block_size = 1024;
+        // sb.blocks_num = 16384;
+        // sb.inodes_num = 1024 * 8;
 
         let inode_bitmap_id = 1;
         let inodes_id = if sb.inodes_num % (8 * sb.block_size) == 0 {
@@ -300,7 +300,7 @@ impl<'a> FileSystem<'a> {
         ind_block_num: u32,
         content: &[u8],
         offset: usize,
-    ) -> Result<usize, &str> {
+    ) -> Result<usize, &'static str> {
         let bs = self.sb.block_size as usize;
         let total = content.len();
         let mut block_num = offset / bs;
@@ -313,8 +313,8 @@ impl<'a> FileSystem<'a> {
             bs - start
         };
         let indirect_data = self.get_data_block(ind_block_num);
-        println!("{ind_block_num}");
-        println!("{indirect_data:?}");
+        // println!("{ind_block_num}");
+        // println!("{indirect_data:?}");
         let b = u32::from_le_bytes(
             indirect_data[block_num * 4..block_num * 4 + 4]
                 .try_into()
@@ -352,6 +352,67 @@ impl<'a> FileSystem<'a> {
         Ok(total)
     }
 
+    fn write_to_double_indirect_block(
+        &mut self,
+        dob_block_num: u32,
+        content: &[u8],
+        offset: usize,
+    ) -> Result<usize, &'static str> {
+        let bs = (self.sb.block_size * self.sb.block_size / 4) as usize;
+        let total = content.len();
+        let mut block_num = offset / bs;
+        let mut content = content;
+
+        let start = offset % bs;
+        let batch = if content.len() < bs - start {
+            content.len()
+        } else {
+            bs - start
+        };
+        let indirect_data = self.get_data_block(dob_block_num);
+        // println!("{dob_block_num}");
+        // println!("doubly {indirect_data:?}, {offset}, con {}", content.len());
+
+        let b = u32::from_le_bytes(
+            indirect_data[block_num * 4..block_num * 4 + 4]
+                .try_into()
+                .unwrap(),
+        );
+        // println!(" b{b}");
+        if b == 0 {
+            return Err("attemted to write to block 0");
+        }
+        // self.get_data_block_mut(b)[start..start + batch].copy_from_slice(&content[..batch]);
+        self.write_to_indirect_block(b, &content[..batch], start)?;
+        content = &content[batch..];
+        block_num += 1;
+        while content.len() > 0 {
+            if block_num < self.sb.block_size as usize / 4 {
+                let batch = if content.len() < bs {
+                    content.len() as usize
+                } else {
+                    bs
+                };
+                let indirect_data = self.get_data_block(dob_block_num);
+                let b = u32::from_le_bytes(
+                    indirect_data[block_num * 4..block_num * 4 + 4]
+                        .try_into()
+                        .unwrap(),
+                );
+                if b == 0 {
+                    return Err("attemted to write to block 0");
+                }
+                // self.get_data_block_mut(b)[..batch].copy_from_slice(&content[..batch]);
+                self.write_to_indirect_block(b, &content[..batch], 0)?;
+                content = &content[batch..];
+                block_num += 1;
+            } else {
+                return Ok(total - content.len());
+            }
+        }
+        Ok(total)
+    }
+
     fn write_file_data(
         &mut self,
         node: &inode_t,
@@ -362,12 +423,21 @@ impl<'a> FileSystem<'a> {
         let bs = self.sb.block_size as usize;
         let mut content = content;
         if offset >= (self.sb.block_size * 12) as usize {
-            let num = self
-                .write_to_indirect_block(node.sin_inblock, content, offset - bs * 12)
+            if offset >= (self.sb.block_size * (12 + self.sb.block_size / 4)) as usize {
+                // write double indirect
+                self.write_to_double_indirect_block(
+                    node.dob_inblock,
+                    content,
+                    offset - bs * 12 - bs * bs / 4,
+                )
                 .unwrap();
+                return Ok(());
+            }
+            // write indirect
+            let num = self.write_to_indirect_block(node.sin_inblock, content, offset - bs * 12)?;
             // .expect("attemted to write to block 0");
             if num != len as usize {
-                panic!("doubly indirect");
+                self.write_to_double_indirect_block(node.dob_inblock, &content[num..], 0)?;
             }
             return Ok(());
         }
@@ -397,9 +467,8 @@ impl<'a> FileSystem<'a> {
                 len -= batch as isize;
                 block_num += 1;
             } else {
-                let num = self
-                    .write_to_indirect_block(node.sin_inblock, content, 0)
-                    .unwrap();
+                panic!("this happened");
+                let num = self.write_to_indirect_block(node.sin_inblock, content, 0)?;
                 // .expect("attemted to write to block 0");
                 if num != len as usize {
                     panic!("doubly indirect");
@@ -411,13 +480,14 @@ impl<'a> FileSystem<'a> {
     }
 
     pub fn write_file(&mut self, path: &CStr, content: &[u8], offset: usize) -> i32 {
-        println!("write {content:?} to offset {offset}");
+        // println!("write {content:?} to offset {offset}");
         if let Some((mut node, id)) = self.find_file_mut(path.to_str().unwrap()) {
             let len = content.len();
             let size = self.calculate_size(&node);
             println!("len {}", content.len());
             if size < len + offset {
                 if self.truncate(path, len + offset).is_err() {
+                    println!("TRUNCATE FAILED");
                     return -1;
                 }
                 println!("TRUNCATED");
@@ -427,7 +497,7 @@ impl<'a> FileSystem<'a> {
                 node.size = (len + offset) as u32;
                 self.save_inode(id, node);
             }
-            println!("{:?}", node.direct_blocks);
+            // println!("{:?}", node.direct_blocks);
             if self.write_file_data(&node, content, offset).is_err() {
                 return 0;
             }
@@ -592,6 +662,59 @@ impl<'a> FileSystem<'a> {
         return files;
     }
 
+    fn read_indirect_block(
+        &self,
+        data: &mut Vec<u8>,
+        block_num: u32,
+        mut size: usize,
+    ) -> Result<usize, &'static str> {
+        let mut indirect = self.get_data_block(block_num);
+        while indirect.len() > 0 {
+            let b = u32::from_le_bytes(indirect[..4].try_into().unwrap());
+            if b != 0 {
+                if size >= self.sb.block_size as usize {
+                    data.extend_from_slice(self.get_data_block(b));
+                    size -= self.sb.block_size as usize;
+                } else {
+                    if size == 0 {
+                        return Err("file has more blocks than it should");
+                    }
+                    data.extend_from_slice(&self.get_data_block(b)[..size]);
+                    size = 0;
+                }
+            } else {
+                break;
+            }
+            indirect = &indirect[4..];
+        }
+        Ok(size)
+    }
+
+    fn read_double_indirect_block(
+        &self,
+        data: &mut Vec<u8>,
+        block_num: u32,
+        mut size: usize,
+    ) -> Result<usize, &'static str> {
+        let mut indirect = self.get_data_block(block_num);
+        while indirect.len() > 0 {
+            let b = u32::from_le_bytes(indirect[..4].try_into().unwrap());
+            if b != 0 {
+                if size >= self.sb.block_size as usize {
+                    size = self.read_indirect_block(data, b, size)?;
+                } else {
+                    if size == 0 {
+                        return Err("file has more blocks than it should");
+                    }
+                    size = self.read_indirect_block(data, b, size)?;
+                }
+            } else {
+                break;
+            }
+            indirect = &indirect[4..];
+        }
+        Ok(size)
+    }
     fn get_file_data(&self, node: &inode_t) -> Result<Vec<u8>, &'static str> {
         let mut data = vec![];
         let mut size = node.size as usize;
@@ -614,28 +737,10 @@ impl<'a> FileSystem<'a> {
             }
         }
         if node.sin_inblock != 0 {
-            let mut indirect = self.get_data_block(node.sin_inblock);
-            while indirect.len() > 0 {
-                let b = u32::from_le_bytes(indirect[..4].try_into().unwrap());
-                if b != 0 {
-                    if size >= self.sb.block_size as usize {
-                        data.extend_from_slice(self.get_data_block(b));
-                        blocks += 1;
-                        size -= self.sb.block_size as usize;
-                    } else {
-                        if size == 0 {
-                            println!("{:?}", node);
-                            return Err("file has more blocks than it should");
-                        }
-                        data.extend_from_slice(&self.get_data_block(b)[..size]);
-                        blocks += 1;
-                        size = 0;
-                    }
-                } else {
-                    break;
-                }
-                indirect = &indirect[4..];
-            }
+            size = self.read_indirect_block(&mut data, node.sin_inblock, size)?;
+        }
+        if node.dob_inblock != 0 {
+            self.read_double_indirect_block(&mut data, node.dob_inblock, size)?;
         }
         println!("read from {blocks} BLOCKS");
         Ok(data)
@@ -851,15 +956,51 @@ impl<'a> FileSystem<'a> {
         Ok(size)
     }
 
+    fn truncate_doubly_indirect_block(
+        &mut self,
+        block_num: u32,
+        mut size: isize,
+    ) -> Result<isize, &'static str> {
+        let mut i = 0;
+        // println!(
+        //     "indblock {} {:?}",
+        //     block_num,
+        //     self.get_data_block(block_num)
+        // );
+        while self.get_data_block(block_num).len() - i > 0 {
+            let mut b =
+                u32::from_le_bytes(self.get_data_block(block_num)[i..i + 4].try_into().unwrap());
+            if size > 0 {
+                if b == 0 {
+                    b = self.blocks_bitmap.get_first_free().ok_or("OUT OF MEMORY")? as u32;
+                    self.get_data_block_mut(b).zero();
+                }
+                // println!("before indirect {size}");
+                size = self.truncate_indirect_block(b, size)?;
+                // println!("after indirect {size}");
+                self.get_data_block_mut(block_num)[i..i + 4].copy_from_slice(&b.to_le_bytes());
+            } else {
+                if b != 0 {
+                    self.truncate_indirect_block(b, size)?;
+                    self.blocks_bitmap.free(b as usize);
+                    self.get_data_block_mut(block_num)[i..i + 4]
+                        .copy_from_slice(&0u32.to_le_bytes());
+                }
+            }
+            i += 4;
+        }
+        Ok(size)
+    }
+
     fn truncate_inter(&mut self, mut node: inode_t, id: u32, mut size: isize) -> Result<(), &str> {
         node.size = size as u32;
         for i in node.direct_blocks.iter_mut() {
-            println!("{size} {}", *i);
+            // println!("{size} {}", *i);
             if size > 0 {
                 if *i == 0 {
                     *i = self.blocks_bitmap.get_first_free().ok_or("OUT OF MEMORY")? as u32;
                     self.get_data_block_mut(*i).zero();
-                    println!("{}", *i);
+                    // println!("{}", *i);
                 }
                 size -= self.sb.block_size as isize;
             } else {
@@ -870,7 +1011,6 @@ impl<'a> FileSystem<'a> {
             }
         }
         if size > 0 {
-            println!("size is bigger that 0 {size}");
             // create indirect block
             if node.sin_inblock == 0 {
                 node.sin_inblock =
@@ -878,7 +1018,7 @@ impl<'a> FileSystem<'a> {
                 self.get_data_block_mut(node.sin_inblock).zero();
             }
             size = self.truncate_indirect_block(node.sin_inblock, size)?;
-            println!("{:?}", self.get_data_block(node.sin_inblock));
+            // println!("{:?}", self.get_data_block(node.sin_inblock));
         } else {
             // delete indirect block
             if node.sin_inblock != 0 {
@@ -888,7 +1028,28 @@ impl<'a> FileSystem<'a> {
             }
         }
         if size > 0 {
-            return Err("doubly indirect block");
+            // create double indirect
+            println!("size: {size}");
+            if node.dob_inblock == 0 {
+                node.dob_inblock =
+                    self.blocks_bitmap.get_first_free().ok_or("OUT OF MEMORY")? as u32;
+                self.get_data_block_mut(node.dob_inblock).zero();
+            }
+            size = self
+                .truncate_doubly_indirect_block(node.dob_inblock, size)
+                .unwrap();
+        } else {
+            // delete doubly indirect
+            self.truncate_doubly_indirect_block(node.dob_inblock, size)
+                .unwrap();
+            self.blocks_bitmap.free(node.dob_inblock as usize);
+            node.dob_inblock = 0;
+        }
+        println!("size: {size}");
+        if size > 0 {
+            println!("triple size: {size}");
+            // return Err("triply indirect block");
+            panic!("triply indirect block");
         }
         println!("{node:?}");
         self.save_inode(id, node);

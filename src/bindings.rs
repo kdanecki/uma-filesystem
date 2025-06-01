@@ -189,7 +189,7 @@ pub unsafe extern "C" fn rs_chmod(
 #[no_mangle]
 pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
     let block_size = 1024;
-    let block_num = 16348;
+    let block_num = 16348 * 64;
 
     let file = OpenOptions::new()
         .read(true)
@@ -199,12 +199,22 @@ pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
         .expect("failed to open file");
     file.set_len(block_size * block_num).expect("OOM");
     let file = Box::into_raw(Box::new(file));
-    let map = Box::new(unsafe { MmapMut::map_mut(&(*file)).expect("failed mmap") });
+    let mut map = Box::new(unsafe { MmapMut::map_mut(&(*file)).expect("failed mmap") });
+
+    let sb_data: [u8; 28] = map[0..28].try_into().unwrap();
+    let mut sb: superblock_t = zerocopy::transmute!(sb_data);
+    sb.header = [0x58, 0x44, 0x20, 0x20, 0x20, 0x20, 0x58, 0x44];
+    sb.block_size = block_size as u32;
+    sb.blocks_num = block_num as u32;
+    sb.inodes_num = 1024 * 8;
+    let d: [u8; 28] = zerocopy::transmute!(sb);
+    map[..28].copy_from_slice(&d);
+
     let map = Box::into_raw(map);
 
     let mut f = unsafe { Box::new(FileSystem::new(&mut (*map)[..])) };
     // println!("{:?}", f);
-    f.format(1024, 16384);
+    f.format(block_size as u32, block_num as u32);
     // f.dummy_data();
     Box::into_raw(f)
 }
