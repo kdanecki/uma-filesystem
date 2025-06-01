@@ -68,7 +68,12 @@ int32_t rs_rename(struct FileSystem *fs, const char *from, const char *to);
 
 int32_t rs_chmod(struct FileSystem *fs, const char *filename, uint32_t mode);
 
-struct FileSystem *rs_init(void);
+struct FileSystem *rs_init(const char *filename);
+
+struct FileSystem *rs_init_and_format(const char *filename,
+                                      uint64_t block_size,
+                                      uint64_t block_num,
+                                      uint32_t inode_num);
 
 extern void *get_block(struct superblock_t *sb, block_p id);
 

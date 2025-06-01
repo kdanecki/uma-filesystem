@@ -1,5 +1,7 @@
 #include "stdio.h"
 #include <asm-generic/errno-base.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
@@ -149,11 +151,83 @@ static struct fuse_operations my_oper = {
     .release = c_release,
 };
 
+void print_version()
+{
+    printf("a.out 0.1\n");
+}
+
+void print_usage()
+{
+    printf("Syntax: a.out [OPTIONS] [disk image name] [COMMAND]\n\n"
+           "Options:\n"
+           "  -v\t\tshow version and quit\n"
+           "  -h\t\tshow this help message and quit\n"
+           "\n"
+           "Commands:\n"
+           "  format <block size> <block num> <inode num>\tcreates image with given name\n" 
+           "  mount <fuse args>\t\t\t\tmounts the filesystem\n");
+    
+}
+
+int format(int argc, char* argv[])
+{
+    if (argc < 6)
+    {
+        print_usage();
+        return 1;
+    }
+    FileSystem* fs = rs_init_and_format(argv[1], atoll(argv[3]), atoll(argv[4]), atoll(argv[5]));
+    return 0;
+}
+
+int my_mount(int argc, char** argv)
+{
+    FileSystem* fs = rs_init(argv[1]);
+    argv[2] = argv[0];
+    char** lol = &argv[2];
+    return fuse_main(argc-2, lol, &my_oper, fs);
+}
+
 int main(int argc, char *argv[])
 {
-    FileSystem* fs = rs_init();
-    // char buf[1024];
-    //printf("%d\n",rs_read(fs, "foo", buf, 1024));
-    //printf("%s", buf);
-    return fuse_main(argc, argv, &my_oper, fs);
+    // handle options
+    if (argc < 2)
+    {
+        print_usage();
+        return 1;
+    }
+    if (strcmp(argv[1], "-h") == 0)
+    {
+        print_usage();
+        return 0;
+    }
+    if (strcmp(argv[1], "-v") == 0)
+    {
+        print_version();
+        return 0;
+    }
+
+    // handle commands
+    if (argc < 3)
+    {
+        print_usage();
+        return 1;
+    }
+    if (strcmp(argv[2], "format") == 0)
+    {
+        return format(argc, argv);
+    }
+    if (strcmp(argv[2], "mount") == 0)
+    {
+        return my_mount(argc, argv);
+    }
+    print_usage();
+    return 1;
+    
+    // printf("argc %d\n", argc);
+    // for (int i =0; i < argc ; i++)
+    // {
+    //     printf("argv[%d] %s\n", i, argv[i]);
+    // }
 }
+

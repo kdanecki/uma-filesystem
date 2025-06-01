@@ -79,9 +79,9 @@ impl<'a> FileSystem<'a> {
 
     pub fn format(&mut self, block_size: u32, block_num: u32) {
         self.sb.header = [0x58, 0x44, 0x20, 0x20, 0x20, 0x20, 0x58, 0x44];
-        self.sb.blocks_num = block_num;
-        self.sb.block_size = block_size;
-        self.sb.inodes_num = 1024 * 8;
+        // self.sb.blocks_num = block_num;
+        // self.sb.block_size = block_size;
+        // self.sb.inodes_num = 1024 * 8;
         //self.inode_bitmap.take(1);
         //self.blocks_bitmap.take(1);
         self.save();

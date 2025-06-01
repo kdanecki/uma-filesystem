@@ -187,15 +187,38 @@ pub unsafe extern "C" fn rs_chmod(
 }
 
 #[no_mangle]
-pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
-    let block_size = 1024;
-    let block_num = 16348 * 64;
+pub unsafe extern "C" fn rs_init<'a>(
+    filename: *const ::std::os::raw::c_char,
+) -> *mut FileSystem<'a> {
+    let name = CStr::from_ptr(filename);
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(name.to_str().expect("failed to open disk image"))
+        .expect("failed to open file");
+    let file = Box::into_raw(Box::new(file));
+    let map = Box::new(unsafe { MmapMut::map_mut(&(*file)).expect("failed mmap") });
+
+    let map = Box::into_raw(map);
+
+    let f = unsafe { Box::new(FileSystem::new(&mut (*map)[..])) };
+    Box::into_raw(f)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rs_init_and_format<'a>(
+    filename: *const ::std::os::raw::c_char,
+    block_size: u64,
+    block_num: u64,
+    inode_num: u32,
+) -> *mut FileSystem<'a> {
+    let name = CStr::from_ptr(filename);
 
     let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
-        .open("foo")
+        .open(name.to_str().expect("failed to open disk image"))
         .expect("failed to open file");
     file.set_len(block_size * block_num).expect("OOM");
     let file = Box::into_raw(Box::new(file));
@@ -206,7 +229,7 @@ pub extern "C" fn rs_init<'a>() -> *mut FileSystem<'a> {
     sb.header = [0x58, 0x44, 0x20, 0x20, 0x20, 0x20, 0x58, 0x44];
     sb.block_size = block_size as u32;
     sb.blocks_num = block_num as u32;
-    sb.inodes_num = 1024 * 8;
+    sb.inodes_num = inode_num;
     let d: [u8; 28] = zerocopy::transmute!(sb);
     map[..28].copy_from_slice(&d);
 
