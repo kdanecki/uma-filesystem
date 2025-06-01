@@ -20,4 +20,4 @@ Provided Makefile handles all compilation
 ## Run
 
 For detailed instructions consult help `./oxidisedFS -h`.
-Makefile also has targets to automatically create image and mount/unmount the fs with default parameters.
+Makefile also has targets to automatically create image with default parameters and mount/unmount the fs.
