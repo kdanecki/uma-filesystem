@@ -9,10 +9,6 @@ use zerocopy::FromZeros;
 pub struct FileSystem<'a> {
     sb: superblock_t,
     data: &'a mut [u8],
-    // inode_bitmap: block_p,
-    // inodes: block_p,
-    // blocks_bitmap: block_p,
-    // first_block: block_p,
     inode_bitmap: Bitmap<'a>,
     inodes: &'a mut [u8],
     blocks_bitmap: Bitmap<'a>,
@@ -23,9 +19,6 @@ impl<'a> FileSystem<'a> {
     pub fn new(data: &'a mut [u8]) -> Self {
         let sb_data: [u8; 28] = data[0..28].try_into().unwrap();
         let sb: superblock_t = zerocopy::transmute!(sb_data);
-        // sb.block_size = 1024;
-        // sb.blocks_num = 16384;
-        // sb.inodes_num = 1024 * 8;
 
         let inode_bitmap_id = 1;
         let inodes_id = if sb.inodes_num % (8 * sb.block_size) == 0 {
@@ -74,15 +67,9 @@ impl<'a> FileSystem<'a> {
 
     pub fn format(&mut self) {
         self.sb.header = [0x58, 0x44, 0x20, 0x20, 0x20, 0x20, 0x58, 0x44];
-        // self.sb.blocks_num = block_num;
-        // self.sb.block_size = block_size;
-        // self.sb.inodes_num = 1024 * 8;
-        //self.inode_bitmap.take(1);
-        //self.blocks_bitmap.take(1);
         self.save();
         self.create_inode(1, 1, 0, 0x4000 | 0o755);
 
-        // TODO fix this
         let inode_num = 1;
         let mut data = [0u8; 22];
         data[..4].copy_from_slice(&(inode_num as u32).to_le_bytes());
@@ -109,7 +96,6 @@ impl<'a> FileSystem<'a> {
                 if dir_from.is_directory() {
                     if let Some(id) = self.search_directory_get_id(&dir_from, &from[offset + 1..]) {
                         if let Some(to_remove) = self.find_file(to) {
-                            // TODO check if directory is empty
                             if to_remove.is_directory() {
                                 return Err("file already exists");
                             }

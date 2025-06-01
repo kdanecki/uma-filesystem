@@ -98,7 +98,6 @@ pub unsafe extern "C" fn rs_create(
     return -1;
 }
 
-// TODO offset
 #[no_mangle]
 pub unsafe extern "C" fn rs_write(
     fs: *mut FileSystem,
