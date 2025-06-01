@@ -3,7 +3,6 @@ use std::{
     ffi::{CStr, CString},
     fs::OpenOptions,
 };
-mod fuse;
 
 use memmap2::MmapMut;
 
