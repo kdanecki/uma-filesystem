@@ -25,17 +25,6 @@ typedef struct inode_t {
   char unused[24];
 } inode_t;
 
-typedef struct superblock_t {
-  char header[8];
-  unsigned int inodes_num;
-  unsigned int blocks_num;
-  unsigned int block_size;
-  unsigned int free_blocks;
-  unsigned int free_inodes;
-} superblock_t;
-
-typedef unsigned int inode_p;
-
 int32_t rs_getattr(struct FileSystem *fs, const char *filename, struct inode_t *inode_buf);
 
 int32_t rs_open(struct FileSystem *fs, const char *filename);
@@ -74,19 +63,3 @@ struct FileSystem *rs_init_and_format(const char *filename,
                                       uint64_t block_size,
                                       uint64_t block_num,
                                       uint32_t inode_num);
-
-extern void *get_block(struct superblock_t *sb, block_p id);
-
-extern struct inode_t *get_inode_by_id(struct superblock_t *sb, inode_p id);
-
-extern void take_inode(struct superblock_t *sb, inode_p id);
-
-extern block_p get_free_data_block(struct superblock_t *sb);
-
-extern void test(struct superblock_t *sb);
-
-extern inode_p find_free_inode(struct superblock_t *sb);
-
-extern struct inode_t *find_inode_by_path(struct superblock_t *sb, const char *path);
-
-extern struct inode_t *search_dir(struct inode_t *cur, const char *path);

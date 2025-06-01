@@ -9,6 +9,7 @@ use memmap2::MmapMut;
 
 use crate::types::*;
 
+#[allow(non_camel_case_types)]
 /// cbindgen:no-export
 type fuse_fill_dir_t = unsafe extern "C" fn(
     buf: *mut ::std::os::raw::c_void,
@@ -237,7 +238,7 @@ pub unsafe extern "C" fn rs_init_and_format<'a>(
 
     let mut f = unsafe { Box::new(FileSystem::new(&mut (*map)[..])) };
     // println!("{:?}", f);
-    f.format(block_size as u32, block_num as u32);
+    f.format();
     // f.dummy_data();
     Box::into_raw(f)
 }
